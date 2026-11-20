@@ -7,10 +7,11 @@ infinities, -0, subnormals) and returns their outputs. Its digest pins those out
 Windows fails by name. The cases in RECORDED hold outputs whose last bits follow the system:
 FFTs (pocketfft's and FFTW's twiddle factors come from the C library's cos and sin) and dense
 LAPACK (OpenBLAS's kernels for the CPU, or Accelerate); their digests are recorded, not pinned,
-and docs/platforms.md has the measured differences. The cases in ARM_NAN hold the outputs of
-kernels that still give ARM's NaN for an invalid operation (MATLAB's is x86's); the test expects
-them to differ there. No output sees two NaNs of other bits (``specials``), except where the
-kernel fixes their order itself: their sum's NaN is the compiler's choice of operand otherwise.
+and docs/platforms.md has the measured differences. The cases in ARM_NAN (none now) would hold
+the outputs of kernels that still give ARM's NaN for an invalid operation (MATLAB's is x86's);
+the test expects them to differ there. No output sees two NaNs of other bits (``specials``),
+except where the kernel fixes their order itself: their sum's NaN is the compiler's choice of
+operand otherwise.
 
 The cases cover every binding of the extension modules (ALL_BINDINGS less EXEMPT_BINDINGS) and
 every function of petakit5d.matlabcompat (less EXEMPT_FUNCTIONS); test_kernel_hashes.py checks
@@ -1077,7 +1078,8 @@ def _():
 
 # -- special values through weighted sums ------------------------------------------------------
 # Inf and NaN in float data meet zero weights and opposite infinities in the interpolations and
-# filters: invalid operations, whose NaN has the sign bit set on x86 and clear on ARM.
+# filters: invalid operations, whose NaN has the sign bit set on x86 and clear on ARM (the
+# kernels give x86's everywhere).
 
 
 @case("specials.deskew")
@@ -1247,12 +1249,10 @@ def _():
     return out
 
 
-@case(
-    "specials.filters_infinities",
-    arm_nan="the linear filters' multiply-add chains give the CPU's NaN for Inf * 0 and Inf - Inf "
-    "(float data with infinities)",
-)
+@case("specials.filters_infinities")
 def _():
+    """the linear filters' multiply-add chains where Inf meets a zero tap and the other
+    infinity"""
     from petakit5d.matlabcompat import filters as F
 
     out = []
@@ -1265,12 +1265,10 @@ def _():
     return out
 
 
-@case(
-    "specials.deskew_infinities",
-    arm_nan="the deskew/rotate warp and the skewed space interpolation give the CPU's NaN for "
-    "Inf * 0 and Inf - Inf (single data with infinities)",
-)
+@case("specials.deskew_infinities")
 def _():
+    """the deskew/rotate warp and the skewed space interpolation of single data with
+    infinities: Inf * 0 at whole coordinates, Inf - Inf"""
     from petakit5d.kernels import deskew as DS
 
     out = []

@@ -7,8 +7,10 @@
 // - taps_nd: an N-D correlation of a padded volume with a list of taps in a given order (one
 //   chain per output voxel, fused or plain).
 // Every output value is computed by one thread in a fixed order, so the results do not depend
-// on the thread count.
+// on the thread count. An invalid operation's NaN is x86's (MATLAB's) on every processor
+// (kernels.inc).
 #include <pk5d/common.hpp>
+#include <pk5d/fpexact.hpp>
 
 #include <algorithm>
 #include <cmath>

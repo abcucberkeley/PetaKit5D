@@ -16,6 +16,11 @@
 //   a * b as they like (GCC does on x86-64 in the integral image's and imwarp's sums), and
 //   MATLAB's code gives the first NaN as written (measured). Not free: for recomputing the few
 //   values whose plain computation came out NaN.
+// - pk5d::x86_fma_nans(r, a, b, c): r, the result of fma(a, b, c) = a * b + c (rounded once),
+//   with x86's NaN: where r is NaN, the first NaN of a, b, c (quieted), else x86's default NaN.
+//   x86's fused multiply-adds take the factors' NaN before the addend's in every form (132,
+//   213, 231) and give the addend's NaN for 0 * Inf + NaN (measured); ARM's take the addend's
+//   first and give their default NaN for 0 * Inf + NaN. For recomputing, as x86_nans.
 // - pk5d::int64_to_float(x): x rounded once to the nearest float (ties to even), as x86's
 //   cvtsi2ss. AArch64 compilers convert vectors of 64-bit integers through double, which rounds
 //   twice for |x| > 2^53; there the value is first rounded to odd at 53 bits, which makes the
@@ -86,6 +91,16 @@ inline T x86_nans(T r, T a, T b) {
             u = sizeof(T) == 4 ? U(0xFFC00000u) : U(0xFFF8000000000000ull);
         }
         std::memcpy(&r, &u, sizeof r);
+    }
+    return r;
+}
+
+template <typename T>
+inline T x86_fma_nans(T r, T a, T b, T c) {
+    static_assert(std::is_floating_point_v<T>, "x86_fma_nans: float or double");
+    if (r != r) {
+        if (a != a || b != b) return x86_nans(r, a, b);
+        return x86_nans(r, c, c);
     }
     return r;
 }

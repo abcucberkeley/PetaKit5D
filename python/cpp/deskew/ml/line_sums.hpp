@@ -8,7 +8,8 @@
 // - uint16 lines: the first floor(len / 16) * 16 values as (a*wa + b*wb) + (c*wc + d*wd), the
 //   rest left to right;
 // - uint16 output: + 0.5f, then truncated (in the SIMD part a saturating pack to [0, 65535]).
-// The kernels are compiled without fused multiply-adds (-ffp-contract=off).
+// The kernels are compiled without fused multiply-adds (-ffp-contract=off). Without AVX2, a float
+// value that comes out NaN is computed again with x86's NaN (../nans_x86.hpp).
 // The mex's nested "#pragma omp parallel for" and "#pragma parallel for" lines are left out:
 // these functions only run inside the kernels' parallel loops, where they were serialized.
 #pragma once
@@ -16,6 +17,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+
+#include "../nans_x86.hpp"
 
 #if defined(__AVX2__)
 #include <immintrin.h>
@@ -385,6 +388,7 @@ inline void compute_weighted_sum_two_vectors(const float* a, const float* b, flo
         float res = wa * a[i] + wb * b[i];
         result[i] = res;
     }
+    nans_x86_2(a, b, result, wa, wb, len);
 }
 
 inline void compute_weighted_sum(const float* a, const float* b, const float* c, const float* d,
@@ -394,6 +398,7 @@ inline void compute_weighted_sum(const float* a, const float* b, const float* c,
         float res = wa * a[i] + wb * b[i] + wc * c[i] + wd * d[i];
         result[i] = res;
     }
+    nans_x86_4(a, b, c, d, result, wa, wb, wc, wd, len);
 }
 
 inline void copy_uint16_to_float(const uint16_t* src, float* dst, size_t len) {

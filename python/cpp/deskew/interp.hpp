@@ -5,15 +5,18 @@
 // rows of x are contiguous, so the lanes run along x and every voxel keeps its arithmetic: the
 // formula of its x column's range, and PAIR for rows y below floor(ny / 16) * 16 (lanes.hpp).
 // xstep is single precision, as in the mex. Grid slices are split among threads statically.
+// Without AVX2, a float value that comes out NaN is computed again with x86's NaN (nans_x86.hpp).
 #pragma once
 
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 #include "lanes.hpp"
+#include "nans_x86.hpp"
 #include "skewed_warp.hpp"
 
 namespace pk5d::deskew {
@@ -88,6 +91,9 @@ inline void row_sum2(const T* a, const T* b, TO* out, float wa, float wb, uint64
         if (sizeof(TO) == 2) v = add_half(v);
         store_partial(out + i, v, m);
     }
+#ifdef PK5D_DESKEW_NAN_X86
+    if constexpr (std::is_same_v<T, float>) nans_x86_2(a, b, out, wa, wb, n);
+#endif
 }
 
 // the 4-term sums of a row (PAIR or SEQ)
@@ -112,6 +118,10 @@ inline void row_sum4_mode(const T* a, const T* b, const T* c, const T* d, TO* ou
         else
             store_partial(out + i, v, m);
     }
+#ifdef PK5D_DESKEW_NAN_X86
+    // (single data: always SEQ)
+    if constexpr (std::is_same_v<T, float> && !PAIR) nans_x86_4(a, b, c, d, out, wa, wb, wc, wd, n);
+#endif
 }
 
 template <typename T, typename TO>

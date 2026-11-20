@@ -20,7 +20,9 @@
 // place in its output line (and, for interpolated values, its row y), never by the blocking:
 // the results do not depend on the block and window sizes or the threads. With `fill` the
 // voxels the mex leaves alone (slices and lines outside, rows past the input) are written as 0,
-// so that the output need not start zeroed (a buffer reused from file to file).
+// so that the output need not start zeroed (a buffer reused from file to file). Without AVX2, a
+// float value (interpolated, or of a line) that comes out NaN is computed again with x86's NaN
+// (nans_x86.hpp).
 #pragma once
 
 #include <algorithm>
@@ -30,6 +32,7 @@
 #include <vector>
 
 #include "lanes.hpp"
+#include "nans_x86.hpp"
 #include "plan.hpp"
 #include "skewed_warp.hpp"
 #include "transpose.hpp"
@@ -183,6 +186,36 @@ inline void interp_column_lanes(const Raw& raw, const InterpSlice& p, const uint
                           round16);
     }
 }
+
+#ifdef PK5D_DESKEW_NAN_X86
+// the lanes of interp_column_lanes's column r (float data: the sums SEQ) that came out NaN,
+// computed again from the same operands
+template <typename Raw>
+inline void interp_column_nans_x86(const Raw& raw, const InterpSlice& p, const uint64_t r,
+                                   const uint64_t xa, const uint8_t Reverse, const uint64_t nx,
+                                   float* o, const uint64_t ng) {
+    const uint64_t zorg = p.zorg, s = p.s, t = p.t, n = 8 * ng;
+    if (!any_nan(o, n)) return;
+    if (Reverse) {
+        if (r < xa - s)
+            nans_x86_2(raw(zorg + 1, r + t), raw(zorg + 1, r + t + 1), o, p.c10_w, p.c11_w, n);
+        else if (r < nx - t - 1)
+            nans_x86_4(raw(zorg, r + s - xa), raw(zorg, r + s - xa + 1), raw(zorg + 1, r + t),
+                       raw(zorg + 1, r + t + 1), o, p.c00_w, p.c01_w, p.c10_w, p.c11_w, n);
+        else
+            nans_x86_2(raw(zorg, r + s - xa), raw(zorg, r + s - xa + 1), o, p.c00_w, p.c01_w, n);
+    } else {
+        if (r < xa - s)
+            nans_x86_2(raw(zorg, r + s), raw(zorg, r + s + 1), o, p.c00_w, p.c01_w, n);
+        else if (r < nx - t - 1)
+            nans_x86_4(raw(zorg, r + s), raw(zorg, r + s + 1), raw(zorg + 1, r + t - xa),
+                       raw(zorg + 1, r + t - xa + 1), o, p.c00_w, p.c01_w, p.c10_w, p.c11_w, n);
+        else
+            nans_x86_2(raw(zorg + 1, r + t - xa), raw(zorg + 1, r + t - xa + 1), o, p.c10_w,
+                       p.c11_w, n);
+    }
+}
+#endif
 
 // one output line: groups [0, np) with the formula fp, [np, ng) with ft (0 SEQ, 1 PAIR, 2
 // SEQ_SWAP); half: + 0.5 for the uint16 output's rounding
@@ -431,10 +464,17 @@ void blocked_warp(const T* const vol, const uint64_t nz, const uint64_t ny, cons
                 for (int64_t q = qa; q <= qb; ++q) {
                     if (orig[q]) continue;
                     const int64_t ii = (int64_t)idx[q];
-                    for (int k = 0; k < 2; ++k)
+                    for (int k = 0; k < 2; ++k) {
                         interp_column_lanes(rcol, G.slices[ii], (uint64_t)(c + k), G.xa, Reverse, nx,
                                             I.data() + ((uint64_t)(ii - ilo) * 2 + k) * ls, ng, mode4,
                                             kind == 2);
+#ifdef PK5D_DESKEW_NAN_X86
+                        if constexpr (kind == 0)
+                            interp_column_nans_x86(rcol, G.slices[ii], (uint64_t)(c + k), G.xa,
+                                                   Reverse, nx,
+                                                   I.data() + ((uint64_t)(ii - ilo) * 2 + k) * ls, ng);
+#endif
+                    }
                 }
                 // grid slice q, column c + k: raw or interpolated lanes
                 for (int64_t q = qa; q <= qb; ++q)
@@ -466,6 +506,10 @@ void blocked_warp(const T* const vol, const uint64_t nz, const uint64_t ny, cons
                         const float* const* p = P.data() + 2 * (z0 - ga);
                         TO* o = O.data() + (uint64_t)(xo - s0) * os;
                         line_lanes(p[0], p[2], p[1], p[3], w, o, np, ng, fp, ft, kind == 2);
+#ifdef PK5D_DESKEW_NAN_X86
+                        if constexpr (kind == 0)
+                            nans_x86_4(p[0], p[2], p[1], p[3], o, wt[0], wt[1], wt[2], wt[3], 8 * ng);
+#endif
                     }
                     // the lines to rows i0 .. i0 + nl - 1, columns s0 .. s1 - 1: transposed, streamed
                     uint64_t j8 = 0;

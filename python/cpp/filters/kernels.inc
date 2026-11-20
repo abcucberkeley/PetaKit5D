@@ -4,6 +4,14 @@
 // processor and in every instruction set (with the FMA target it is the instruction, without it
 // the C library's correctly rounded function), and a plain one is a product and a sum, each
 // rounded (-ffp-contract=off): so every set gives the same bits.
+// ARM (PK5D_FP_ARM): an output value that comes out NaN is computed again, the same steps with
+// x86's NaN for each (pk5d::x86_fma_nans, pk5d::x86_nans): MATLAB's NaN for Inf * 0 and Inf - Inf,
+// and, where NaNs meet, a tap's NaN before the running sum's, as MATLAB gives them (measured): a
+// fused tap's factors before the sum (x86's fused multiply-adds take them so), a plain tap's
+// product before the sum, a chain's NaN before the sum of the chains before it. ARM's default
+// NaN has the sign bit clear, and its fused multiply-add takes the addend's NaN first and gives
+// the default NaN for 0 * Inf + NaN. A NaN never becomes a number in these chains, so the values
+// without NaN keep their bits; x86-64 compiles the code it compiled before.
 namespace PK5D_FILT_NS {
 
 // acc = fma(w, s, acc) or acc + w * s over n values
@@ -86,6 +94,68 @@ PK5D_FILT_ISA void run_program(const int32_t *pr, i64 plen, i64 i, i64 pre, i64 
     if (first)
         for (i64 x = 0; x < n; x++) total[x] = T(0);
 }
+
+#ifdef PK5D_FP_ARM
+// a tap with x86's NaN: acc + w * s, fused or plain (the product's NaN before the sum's)
+template <typename T>
+PK5D_FILT_ISA inline T tap_x86(T w, T s, T acc, bool fused) {
+    if (fused) return pk5d::x86_fma_nans(std::fma(w, s, acc), w, s, acc);
+    const T p = pk5d::x86_nans(w * s, w, s);
+    return pk5d::x86_nans(acc + p, p, acc);
+}
+
+// value x of output row i of a tap program, run_program's steps with x86's NaN
+template <typename T, typename Rows>
+PK5D_FILT_ISA T program_value_x86(const int32_t *pr, i64 plen, i64 i, i64 pre, i64 n_in,
+                                  const T *w, T value, Rows rows, i64 x) {
+    bool first = true;
+    bool open = false;
+    T acc = T(0), total = T(0);
+    for (i64 k = 0; k <= plen; k++) {
+        const int32_t op = k < plen ? pr[k] : int32_t(-2);
+        if (op == -1 || op == -2 || op == -3) {
+            if (open) {
+                total = first ? acc : pk5d::x86_nans(total + acc, acc, total);
+                first = false;
+                acc = T(0);
+                open = false;
+            }
+            if (op == -2) break;
+            if (op == -3 && !first) {
+                acc = total;
+                first = true;
+                open = true;
+            }
+            continue;
+        }
+        bool fused = op >= 0;
+        i64 t, q;
+        if (op <= -kEdgeHigh) {
+            t = -(i64)op - kEdgeHigh;
+            q = n_in;
+            fused = true;
+        } else if (op <= -kEdgeLow) {
+            t = -(i64)op - kEdgeLow;
+            q = -1;
+            fused = true;
+        } else {
+            t = fused ? op : -(i64)op - 10;
+            q = i + t - pre;
+        }
+        const T *s = rows(q);
+        acc = tap_x86(w[t], s != nullptr ? s[x] : value, acc, fused);
+        open = true;
+    }
+    return first ? T(0) : total;
+}
+
+template <typename T>
+PK5D_FILT_ISA inline bool any_nan(const T *d, i64 n) {
+    bool any = false;
+    for (i64 x = 0; x < n; x++) any |= d[x] != d[x];
+    return any;
+}
+#endif
 
 // the number of taps of a program that is one fused chain of kernel taps, else 0
 inline i64 simple_taps(const int32_t *pr, i64 plen, i64 span) {
@@ -208,6 +278,16 @@ PK5D_FILT_ISA void line_program(const T *src, T *dst, i64 outer, i64 n_in, i64 i
                     run_program(pr, plen, i, pre, n_in, w, value, rows, acc.data(), d, nx);
                     i++;
                 }
+#ifdef PK5D_FP_ARM
+                for (i64 r = r0; r < r1; r++) {
+                    T *d = dst + (o * n_out + r) * inner + x0;
+                    if (!any_nan(d, nx)) continue;
+                    const int32_t *pr = prog + (i64)rowmap[r] * plen;
+                    for (i64 x = 0; x < nx; x++)
+                        if (d[x] != d[x])
+                            d[x] = program_value_x86(pr, plen, r, pre, n_in, w, value, rows, x);
+                }
+#endif
             }
         }
         return;
@@ -250,6 +330,13 @@ PK5D_FILT_ISA void line_program(const T *src, T *dst, i64 outer, i64 n_in, i64 i
                 }
                 i = j;
             }
+#ifdef PK5D_FP_ARM
+            if (any_nan(d, n_out))
+                for (i64 r = 0; r < n_out; r++)
+                    if (d[r] != d[r])
+                        d[r] = program_value_x86(prog + (i64)rowmap[r] * plen, plen, r, pre, n_in, w,
+                                                 value, rows, 0);
+#endif
         }
     }
 }
@@ -275,6 +362,18 @@ PK5D_FILT_ISA void taps_nd(const T *P, i64 py, i64 px, T *out, i64 oz, i64 oy, i
             const T *s = P + ((z + offs[3 * k]) * py + (y + offs[3 * k + 1])) * px + offs[3 * k + 2] + x0;
             mac_row(o, s, w[k], nx, fused);
         }
+#ifdef PK5D_FP_ARM
+        if (any_nan(o, nx))
+            for (i64 x = 0; x < nx; x++) {
+                if (o[x] == o[x]) continue;
+                T acc = T(0);
+                for (i64 k = 0; k < K; k++)
+                    acc = tap_x86(w[k], P[((z + offs[3 * k]) * py + (y + offs[3 * k + 1])) * px +
+                                          offs[3 * k + 2] + x0 + x],
+                                  acc, fused);
+                o[x] = acc;
+            }
+#endif
     }
 }
 
