@@ -66,10 +66,11 @@ against an installed wheel in CI (below).
 - **Windows:** MSVC's LLVM OpenMP runtime `libomp140.x86_64.dll`. The build copies it next to
   the modules when the toolset's redistributable folders have it; Visual Studio 2026's (the
   windows-2025 runners') don't, so delvewheel copies it into `petakit5d.libs/` under a mangled
-  name, with the C++ runtime (`msvcp140.dll`), from the first folder on `PATH` that has them.
-  The workflow puts the toolset's own redistributable C++ runtime first there: the system's copy
-  can be older than the toolset, which Microsoft does not support (delvewheel warns of it). All
-  modules load the one copy of each.
+  name, with the C++ runtime (`msvcp140.dll`), from the first folder on `PATH` that has them:
+  on the runners System32's libomp140, and for the C++ runtime, unless the workflow puts the
+  toolset's own redistributable one first, any program's copy that comes earlier (a JDK's 14.40
+  in the first trial, older than the 14.51 toolset, which Microsoft does not support and
+  delvewheel warns of). All modules load the one copy of each.
 
 ### The GPU extra
 
@@ -181,6 +182,14 @@ The artifacts are `petakit5d-<system>-<architecture>`, `sdist` and
   older than the toolset (14.51). The checks then expected the build's placement of libomp140
   and took the folders of Microsoft's own builds in those two DLLs for the runner's; both are
   handled as described above. The add-on's Windows job had run its steps in PowerShell.
+- **GitHub, the second trial run:** every job passed but the add-on's Windows wheel. The Windows
+  `cp311` and `cp312-abi3` wheels passed their test commands (15 passed, 12 skipped each; the
+  abi3 wheel also on CPython 3.14), `abi3audit --strict` and the checks: libomp140 (System32's)
+  and `msvcp140.dll` 14.51.36247 (the toolset's) bundled by delvewheel, Microsoft-signed, the one
+  OpenMP runtime of all modules. The add-on's Windows wheel passed its test (`fftw-3.3.8-sse2-avx`
+  from both libraries; FFTW's file names trimmed by MSVC too), but delvewheel had copied in
+  `vcruntime140.dll`, which a `py3` wheel's delvewheel doesn't know CPython ships: it is excluded
+  now.
 - Before: the abi3 wheel, installed into a fresh environment on a machine of another CPU
   generation than the build's, passed the full CPU suite with and without the golden store and
   with the add-on's wheel installed, and installed with its dependencies from PyPI on CPython

@@ -168,8 +168,9 @@ jobs:
       # the image of petakit5d's wheels (python/pyproject.toml), so that both are built alike
       CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1
       # the two libraries need nothing outside the system (delvewheel checks that) and no record
-      # of the build machine's folders
-      CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair --analyze-existing --no-diagnostic -w {dest_dir} {wheel}
+      # of the build machine's folders; vcruntime140.dll comes with every CPython, which a py3
+      # wheel's delvewheel doesn't assume
+      CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair --analyze-existing --exclude vcruntime140.dll --no-diagnostic -w {dest_dir} {wheel}
       # both libraries load and are FFTW 3.3.8
       CIBW_TEST_COMMAND: >-
         python -c "import ctypes, petakit5d_fftw as m;

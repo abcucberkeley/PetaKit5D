@@ -125,8 +125,9 @@ environment = { MACOSX_DEPLOYMENT_TARGET = "13.0", OpenMP_ROOT = "$(pwd)/build/l
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
-# the build puts libomp140.x86_64.dll next to the modules; delvewheel adds the C++ runtime, and
-# --no-diagnostic keeps the build machine's folders out of its record
+# delvewheel copies in the C++ runtime, and libomp140.x86_64.dll unless the build put it next to
+# the modules (--ignore-existing keeps that copy; Visual Studio 2026's redistributable folders
+# have none); --no-diagnostic keeps the build machine's folders out of its record
 repair-wheel-command = "delvewheel repair --ignore-existing --no-diagnostic -w {dest_dir} {wheel}"
 
 [tool.pytest.ini_options]
