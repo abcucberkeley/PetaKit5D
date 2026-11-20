@@ -290,6 +290,28 @@ def _seq_all(x: Any, test: Callable[[Any], bool]) -> bool:
     return all(test(e) for e in flat)
 
 
+# the port's forms of MATLAB structs besides mappings (a dict is a 1x1 struct), by module and
+# class name, so that the check imports nothing (a value of a class exists only once its module
+# is loaded); subclasses count (Movie is a Movie2D)
+_STRUCT_CLASSES = frozenset(
+    {
+        ("petakit5d.io.matfile", "StructArray"),  # a struct array of any size, empty ones too
+        ("petakit5d.matlabcompat.label", "ConnComp"),  # bwconncomp's struct
+        ("petakit5d.detection.condition", "Movie2D"),  # one movie of a condition
+        ("petakit5d.detection.condition", "Condition"),  # a condition's movies
+    }
+)
+
+
+def _is_struct(x: Any) -> bool:
+    """MATLAB's isstruct in the port's forms: a dict (or another mapping), a struct array of any
+    size and the classes above. Objects (``io.matfile.MatlabObject``), cells (lists and tuples,
+    of dicts too) and every other value are not structs, as in MATLAB."""
+    if isinstance(x, Mapping):
+        return True
+    return any((c.__module__, c.__qualname__) in _STRUCT_CLASSES for c in type(x).__mro__)
+
+
 def _pred(name: str, x: Any) -> bool:
     k = _np_kind(x)
     mclass = _v.matlab_class(x) if isinstance(x, _v.MArray | _v.Cell | _v.MString) else None
@@ -334,7 +356,7 @@ def _pred(name: str, x: Any) -> bool:
             return all(_pred("ischar", e) for e in x)
         return isinstance(x, list | tuple) and all(isinstance(e, str) for e in x)
     if name == "isstruct":
-        return isinstance(x, Mapping)
+        return _is_struct(x)
     if name == "function_handle":
         return callable(x) and not isinstance(x, type)
     if name == "isempty":
