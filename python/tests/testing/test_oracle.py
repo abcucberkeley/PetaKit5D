@@ -876,7 +876,7 @@ def test_a_withheld_error_text_stays_out_of_the_manifest(tmp_path, monkeypatch):
             oracle.check(make(""), tmp_path / f"{where}_ok")
             for ident, problem in (("tp:other", "'tp:other'"), (None, "no identifier attribute")):
                 with pytest.raises(pytest.fail.Exception) as err:
-                    oracle.check(make(ident), tmp_path / f"{where}_{ident}")
+                    oracle.check(make(ident), tmp_path / f"{where}_{str(ident).replace(':', '_')}")
                 msg = str(err.value)
                 assert problem in msg and "third-party sentence" not in msg, msg
     # recorded texts are kept, and a recorded empty identifier is not compared
