@@ -13,14 +13,20 @@ or petakit5d_fftw (the exact FFT add-on, GPL). For each wheel:
   deployment target is not newer than the wheel's;
 - the bundled libraries: the libraries besides the modules are the expected ones (petakit5d's
   OpenMP runtime: on Linux the libgomp it shares with cpp-zarr, next to the modules; on macOS
-  libomp in .dylibs; on Windows libomp140, and the C++ runtime, that delvewheel adds; the add-on's
-  two FFTW libraries), and every library a binary loads is in the wheel or the system's;
+  libomp in .dylibs; on Windows libomp140, and the C++ runtime, that delvewheel adds, or, built
+  with MinGW-w64, libgomp-1.dll and the DLLs it loads, next to the modules under their own names;
+  the add-on's two FFTW libraries), and every library a binary loads is in the wheel or the
+  system's;
 - the search paths: RUNPATH (Linux) only $ORIGIN; LC_RPATH (macOS) only @loader_path; no install
   name outside the wheel and the system's folders;
 - no folder of the build machine named in any member (cpp-tiff's check_wheel_paths.py approach:
   every member's bytes, with ELF's compressed sections decompressed, and its name, against home
   folders, temporary build environments, cibuildwheel's and the CI runners' folders and the
   --forbid patterns), and no compiled Python file;
+- Windows, built with MinGW-w64 (binaries that GNU ld linked: the linker version in their PE
+  header): the toolchain's notices that the build copies in as the toolchain ships them (GCC's
+  runtime, MinGW-w64's runtime, winpthreads; the profile's mingw_notices), present and text; at
+  those exact paths, and only there, a member is left out of the folder and --forbid search;
 - no FFTW (GPL) in petakit5d's binaries: no fftw symbol defined, no FFTW version string;
 - the license: METADATA's License-Expression, and every License-File (the project's own among
   them) in .dist-info/licenses.
@@ -38,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import email.parser
+import hashlib
 import os
 import posixpath
 import re
@@ -64,7 +71,14 @@ class Profile:
     # folders are not searched for when their vendor's signature is on them (the --forbid
     # patterns still are)
     redistributables: dict[str, str] = field(default_factory=dict)
+    # Windows, built with MinGW-w64 (binaries linked by GNU ld): the toolchain's notices that the
+    # build copies into the wheel as the toolchain ships them (their exact paths; required, and left
+    # out of the folder and --forbid search: third-party texts, kept as they are)
+    mingw_notices: tuple[str, ...] = ()
 
+
+# the notices of MinGW-builds' GCC that a MinGW-w64 build carries, under its licenses/ folder
+_MINGW_NOTICES = ("gcc/COPYING3", "gcc/COPYING.RUNTIME", "mingw-w64/COPYING.MinGW-w64-runtime.txt")
 
 PROFILES = {
     "petakit5d": Profile(
@@ -90,6 +104,15 @@ PROFILES = {
                 # delvewheel's copies of MSVC's C++ runtime
                 (r"petakit5d\.libs/msvcp140(?:_[0-9a-z_]+)?-[0-9a-f]{32}\.dll", False),
             ),
+            # a build with MinGW-w64's GCC (modules that load libgomp-1.dll): its OpenMP runtime
+            # and the DLLs that loads, next to the modules under their own names, so that the
+            # cpp-zarr and cpp-tiff wheels' libraries, which load libgomp-1.dll by that name, share
+            # the one runtime (docs/decisions/0011-windows-toolchain.md)
+            "windows-mingw": (
+                (r"petakit5d/_ext/libgomp-1\.dll", True),
+                (r"petakit5d/_ext/libwinpthread-1\.dll", True),
+                (r"petakit5d/_ext/libgcc_s_seh-1\.dll", False),
+            ),
         },
         modules=True,
         fftw=False,
@@ -98,6 +121,10 @@ PROFILES = {
             "windows": r"petakit5d/_ext/libomp140\.x86_64\.dll"
             r"|petakit5d\.libs/(?:libomp140\.x86_64|msvcp140(?:_[0-9a-z_]+)?)-[0-9a-f]{32}\.dll"
         },
+        # GCC's runtime, MinGW-w64's runtime and winpthreads (cmake/Pk5dExtension.cmake)
+        mingw_notices=tuple(
+            f"petakit5d/_ext/licenses/{n}" for n in (*_MINGW_NOTICES, "winpthreads/COPYING")
+        ),
     ),
     "petakit5d_fftw": Profile(
         license="GPL-2.0-or-later",
@@ -118,6 +145,8 @@ PROFILES = {
         },
         modules=False,
         fftw=True,
+        # GCC's libgcc and MinGW-w64's runtime, linked into the libraries (cpp/fft/exact)
+        mingw_notices=tuple(f"petakit5d_fftw/licenses/{n}" for n in _MINGW_NOTICES),
     ),
 }
 
@@ -246,6 +275,8 @@ class Binary:
     minos: list[tuple[int, int, int]] = field(default_factory=list)
     sections: list[tuple[str, bytes | None]] = field(default_factory=list)  # compressed (ELF)
     signer: str = ""  # PE: the publisher its Authenticode certificate names (not verified)
+    # PE: the linker's version in the optional header (GNU ld writes its own, 2.x; MSVC's 14.x)
+    linker: tuple[int, int] | None = None
     problems: list[str] = field(default_factory=list)
 
 
@@ -389,7 +420,8 @@ def parse_pe(data: bytes) -> Binary:
     machine, nsec, _, _, _, optsize, _ = struct.unpack_from("<HHIIIHH", data, pe + 4)
     b.machines.append(PE_MACHINES.get(machine, f"PE machine {machine:#x}"))
     opt = pe + 24
-    magic = struct.unpack_from("<H", data, opt)[0]
+    magic, major, minor = struct.unpack_from("<HBB", data, opt)
+    b.linker = (major, minor)
     ndirs_at = opt + (108 if magic == 0x20B else 92)  # PE32+, PE32
     ndirs = min(struct.unpack_from("<I", data, ndirs_at)[0], 16)
     dirs = [struct.unpack_from("<II", data, ndirs_at + 4 + 8 * i) for i in range(ndirs)]
@@ -719,8 +751,11 @@ def check_wheel(path: str, patterns, profile_name: str | None, quiet: bool, forb
         r.fail(f"the modules load {len(runtimes)} OpenMP runtimes: {', '.join(runtimes)}")
     r.info(f"OpenMP runtime of the modules: {', '.join(runtimes) or '-'}")
 
-    # the bundled libraries
-    expected = profile.libraries.get(system, ())
+    # the bundled libraries (Windows: the set of the toolchain that built the modules)
+    variant = system
+    if system == "windows" and runtimes and all(r.startswith("libgomp") for r in runtimes):
+        variant = "windows-mingw"
+    expected = profile.libraries.get(variant, ())
     for m in libs:
         if not any(re.fullmatch(p, m) for p, _ in expected):
             r.fail(f"{m}: a library the wheel should not carry")
@@ -746,11 +781,29 @@ def check_wheel(path: str, patterns, profile_name: str | None, quiet: bool, forb
     if target is not None and newest:
         r.info(f"deployment target {target[0]}.{target[1]}, the binaries' {newest[0]}.{newest[1]}")
 
+    # built with MinGW-w64 (a binary linked by GNU ld, which writes its own version, 2.x, where
+    # MSVC's linker writes 14.x): the toolchain's notices, as the build copied them
+    gnu = sorted(m for m, b in binaries.items() if b.kind == "pe" and (b.linker or (99,))[0] < 6)
+    if gnu:
+        r.info(f"linked by GNU ld (MinGW-w64): {' '.join(PurePosixPath(m).name for m in gnu)}")
+        for n in profile.mingw_notices:
+            if n not in members:
+                r.fail(f"{n}: missing (a notice of MinGW-w64's toolchain, which its builds carry)")
+            elif b"\0" in data[n]:
+                r.fail(f"{n}: not a text file")
+            else:
+                sha = hashlib.sha256(data[n]).hexdigest()[:16]
+                r.info(f"{n}: the toolchain's notice, {len(data[n])} bytes, sha256 {sha}")
+
     # the folder check of the binaries' compressed sections and every member's bytes; a vendor's
-    # signed redistributable gets the --forbid patterns only
+    # signed redistributable gets the --forbid patterns only; the toolchain's notices, by their
+    # exact paths, are not searched (third-party texts, as the toolchain ships them)
     redist = profile.redistributables.get(system)
     for m in sorted(members):
         b = binaries.get(m)
+        if m in profile.mingw_notices and b is None:
+            r.info(f"{m}: a notice of MinGW-w64's toolchain, as it ships it (not searched)")
+            continue
         if redist and b is not None and re.fullmatch(redist, m):
             if b.signer == "Microsoft Corporation":
                 r.info(f"{m}: Microsoft's signed redistributable (its build folders not searched)")

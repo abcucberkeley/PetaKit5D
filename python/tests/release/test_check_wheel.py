@@ -125,9 +125,11 @@ def fat(*slices: tuple[int, bytes]) -> bytes:
     return bytes(out)
 
 
-def pe(imports=(), delay=(), exports=(), extra=b"", machine=0x8664, signer=None) -> bytes:
+def pe(imports=(), delay=(), exports=(), extra=b"", machine=0x8664, signer=None,
+       linker=(14, 44)) -> bytes:  # fmt: skip
     """A PE32+ DLL with one section holding its import, delay-import and export tables, and with
-    signer, a certificate table (an Authenticode entry whose blob names the signer)."""
+    signer, a certificate table (an Authenticode entry whose blob names the signer); linker: the
+    linker's version in the optional header (MSVC's 14.x; GNU ld writes its own, 2.x)."""
     rva0, raw0 = 0x1000, 0x400
     sec = bytearray()
 
@@ -152,7 +154,7 @@ def pe(imports=(), delay=(), exports=(), extra=b"", machine=0x8664, signer=None)
         dirs[1] = (imp_at, 20 * (len(imp) + 1))
     if delay:
         dirs[13] = (dly_at, 32 * (len(dly) + 1))
-    opt = struct.pack("<H", 0x20B) + bytes(106) + struct.pack("<I", 16)
+    opt = struct.pack("<HBB", 0x20B, *linker) + bytes(104) + struct.pack("<I", 16)
     opt += b"".join(struct.pack("<II", *d) for d in dirs)
     dos = bytearray(0x40)
     dos[:2] = b"MZ"
@@ -572,6 +574,156 @@ def test_windows_runtime_next_to_the_modules(tmp_path, capsys):
     assert rc == 0, out
 
 
+# a wheel of modules built with MinGW-w64's GCC: its libgomp-1.dll and the DLLs that loads, next to
+# the modules under their own names (no delvewheel copies, no Microsoft runtime)
+MINGW_DLLS = {
+    "petakit5d/_ext/libgomp-1.dll": [
+        "libgcc_s_seh-1.dll",
+        "KERNEL32.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "libwinpthread-1.dll",
+    ],
+    "petakit5d/_ext/libwinpthread-1.dll": ["KERNEL32.dll", "api-ms-win-crt-runtime-l1-1-0.dll"],
+    "petakit5d/_ext/libgcc_s_seh-1.dll": ["KERNEL32.dll", "libwinpthread-1.dll"],
+}
+
+
+GNU_LD = (2, 39)
+# the toolchain's notices that a MinGW-w64 build copies in (cmake/Pk5dExtension.cmake)
+NOTICES = [
+    "petakit5d/_ext/licenses/gcc/COPYING3",
+    "petakit5d/_ext/licenses/gcc/COPYING.RUNTIME",
+    "petakit5d/_ext/licenses/mingw-w64/COPYING.MinGW-w64-runtime.txt",
+    "petakit5d/_ext/licenses/winpthreads/COPYING",
+]
+
+
+def mingw_module(*imports, omp="libgomp-1.dll", **kw) -> bytes:
+    std = ["KERNEL32.dll", "api-ms-win-crt-math-l1-1-0.dll", "libwinpthread-1.dll", omp]
+    kw.setdefault("linker", GNU_LD)
+    return pe(imports=[*(imports or ["python3.dll"]), *std], exports=["PyInit_core"], **kw)
+
+
+def mingw(*changes):
+    """the MinGW-w64 wheel, then the changes"""
+
+    def change(files):
+        for name in [n for n in files if n.startswith("petakit5d.libs/")]:
+            files.pop(name)
+        files[WIN] = mingw_module()
+        for name, imports in MINGW_DLLS.items():
+            files[name] = pe(imports=imports, linker=GNU_LD)
+        for n in NOTICES:
+            files[n] = b"notice text, as the toolchain ships it\n"
+        for c in changes:
+            c(files)
+
+    return change
+
+
+def test_a_mingw_wheel_passes(tmp_path, capsys):
+    rc, out = run(capsys, wheel_of(tmp_path, "windows", mingw()))
+    assert rc == 0, out
+    assert "OpenMP runtime of the modules: libgomp-1.dll" in out
+    assert "library petakit5d/_ext/libgcc_s_seh-1.dll" in out
+    assert "linked by GNU ld (MinGW-w64): core.pyd libgcc_s_seh-1.dll" in out
+    assert f"{NOTICES[2]}: the toolchain's notice, 39 bytes, sha256" in out
+
+
+def test_the_mingw_notices_are_left_out_of_the_search_by_their_paths(tmp_path, capsys):
+    # the toolchain's runtime notice cites a URL that a site's pattern of node names can match:
+    # here a made-up site pattern and text
+    url = b"<http://lists.example.org/legal/2004/12/rack07.html>\n"
+    forbid = r"rack[0-9]{2}"
+    path = wheel_of(tmp_path, "windows", mingw(put(NOTICES[2], url)))
+    rc, out = run(capsys, "--forbid", forbid, path)
+    assert rc == 0, out
+    assert f"{NOTICES[2]}: a notice of MinGW-w64's toolchain, as it ships it (not searched)" in out
+    # anywhere else it is searched: another file beside them, a module, a notice's name elsewhere
+    for where in ("petakit5d/_ext/licenses/README.txt", "petakit5d/_ext/licenses/gcc/COPYING",
+                  "petakit5d_extra/licenses/mingw-w64/COPYING.MinGW-w64-runtime.txt"):  # fmt: skip
+        path = wheel_of(tmp_path, "windows", mingw(put(where, url)))
+        rc, out = run(capsys, "--forbid", forbid, path)
+        assert rc == 1 and f"{where}: " in out and "[--forbid 1]" in out, (where, out)
+    path = wheel_of(tmp_path, "windows", mingw(put(WIN, mingw_module(extra=url))))
+    rc, out = run(capsys, "--forbid", forbid, path)
+    assert rc == 1 and "core.pyd: " in out and "[--forbid 1]" in out, out
+    # the folders of a build machine too: in a notice's path they are not searched for either,
+    # but in a binary at that path they are
+    user = b"C:\\Users\\builder\\x.c\0"
+    rc, out = run(capsys, wheel_of(tmp_path, "windows", mingw(put(NOTICES[0], pe(extra=user)))))
+    assert rc == 1 and "[Windows user folder]" in out, out
+
+
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        pytest.param(drop(NOTICES[3]), rf"{NOTICES[3]}: missing", id="missing"),
+        pytest.param(put(NOTICES[1], b"text\0more"), rf"{NOTICES[1]}: not a text file", id="nul"),
+    ],
+)
+def test_mingw_notice_findings(tmp_path, capsys, change, message):
+    rc, out = run(capsys, wheel_of(tmp_path, "windows", mingw(change)))
+    assert rc == 1, out
+    assert re.search(message, out), out
+
+
+def test_an_msvc_wheel_needs_no_mingw_notices(tmp_path, capsys):
+    rc, out = run(capsys, wheel_of(tmp_path, "windows"))
+    assert rc == 0, out
+    assert "linked by GNU ld" not in out and "notice" not in out
+
+
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        # delvewheel's renamed copy would be a runtime of its own, beside the I/O packages'
+        pytest.param(
+            mingw(
+                rename("petakit5d/_ext/libgomp-1.dll", f"petakit5d.libs/libgomp-1-{HASH}.dll"),
+                put(WIN, mingw_module(omp=f"libgomp-1-{HASH}.dll")),
+            ),
+            r"libgomp-1-[0-9a-f]+\.dll: a library the wheel should not carry",
+            id="renamed",
+        ),
+        pytest.param(
+            mingw(drop("petakit5d/_ext/libgcc_s_seh-1.dll")),
+            r"libgomp-1\.dll: loads libgcc_s_seh-1\.dll, which is neither in the wheel",
+            id="libgcc-missing",
+        ),
+        pytest.param(
+            mingw(drop("petakit5d/_ext/libwinpthread-1.dll")),
+            r"0 libraries match petakit5d/_ext/libwinpthread-1\\\.dll \(expected one\)",
+            id="winpthreads-missing",
+        ),
+        pytest.param(
+            mingw(put("petakit5d/_ext/libstdc++-6.dll", pe(imports=["KERNEL32.dll"]))),
+            r"libstdc\+\+-6\.dll: a library the wheel should not carry",
+            id="libstdc++",
+        ),
+        pytest.param(
+            mingw(put(WIN, mingw_module("python3.dll", "libstdc++-6.dll"))),
+            r"loads libstdc\+\+-6\.dll, which is neither in the wheel",
+            id="libstdc++-dynamic",
+        ),
+        pytest.param(
+            mingw(put("petakit5d/_ext/io.pyd", windows_module())),
+            r"the modules load 2 OpenMP runtimes",
+            id="two-toolchains",
+        ),
+        pytest.param(
+            mingw(put("petakit5d/_ext/libgomp-1.dll", pe(extra=b"C:\\Users\\builder\\gcc\\x.c\0"))),
+            r"libgomp-1\.dll: C:\\Users\\builder.* \[Windows user folder\]",
+            id="build-folder",
+        ),
+    ],
+)
+def test_mingw_findings(tmp_path, capsys, change, message):
+    rc, out = run(capsys, wheel_of(tmp_path, "windows", change))
+    assert rc == 1, out
+    assert re.search(message, out), out
+
+
 def test_signed_redistributables_get_the_forbid_patterns_only(tmp_path, capsys):
     rc, out = run(capsys, wheel_of(tmp_path, "windows"))
     assert rc == 0, out
@@ -669,6 +821,28 @@ def test_the_addon(tmp_path, capsys, system):
     assert "petakit5d_fftw/extra.so: a library the wheel should not carry" in out
     assert "extension modules in a library wheel: petakit5d_fftw/m.abi3.so" in out
     assert "the license file COPYING is not declared" in out
+
+
+def test_the_addon_built_with_mingw(tmp_path, capsys):
+    # libraries that GNU ld linked (libgcc and MinGW-w64's runtime linked in) carry the
+    # toolchain's notices of those, under petakit5d_fftw/licenses/
+    name = "petakit5d_fftw-3.3.8.0-py3-none-win_amd64.whl"
+    files = addon_files("windows")
+    for v in ("f", ""):
+        files[f"petakit5d_fftw/pk5d_fftw3{v}.dll"] = pe(
+            imports=["KERNEL32.dll", "api-ms-win-crt-math-l1-1-0.dll"],
+            exports=[f"fftw{v}_execute"],
+            linker=GNU_LD,
+        )
+    rc, out = run(capsys, write_wheel(tmp_path, name, files, licenses=("COPYING",)))
+    assert rc == 1
+    for n in ("gcc/COPYING3", "gcc/COPYING.RUNTIME", "mingw-w64/COPYING.MinGW-w64-runtime.txt"):
+        assert f"petakit5d_fftw/licenses/{n}: missing" in out
+        files[f"petakit5d_fftw/licenses/{n}"] = b"rack07\n"
+    assert "winpthreads" not in out
+    path = write_wheel(tmp_path, name, files, licenses=("COPYING",))
+    rc, out = run(capsys, "--forbid", r"rack[0-9]{2}", path)
+    assert rc == 0, out
 
 
 def write_sdist(folder: Path, files: dict[str, bytes], owner: str = "") -> Path:

@@ -191,6 +191,7 @@ HELPER_PHASES: dict[str, int] = {
     "XR_FSC": 2,
     "XR_FSC_resolution": 2,
     "XR_one_image_FSC_analysis": 2,
+    "XR_runDetection3D_frame_parallel": 3,
     "XR_two_image_FSC_analysis": 2,
     "zarrToN5Block": 2,
 }

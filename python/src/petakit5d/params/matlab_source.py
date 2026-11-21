@@ -200,7 +200,8 @@ class MatlabParam:
     kind: str  # required, optional, parameter
     name: str
     default: str | None  # MATLAB text; None for required arguments
-    validator: str | None  # MATLAB text; None if not given
+    validator: str | None  # MATLAB text; None if not given or withheld
+    withheld: bool = False  # MATLAB has a validator whose text is not kept (third-party code)
 
 
 @dataclass
@@ -215,9 +216,16 @@ class MatlabFunction:
     struct_expand: bool = True
     parser: dict[str, Any] | None = None  # the mcc parser file, if any
     notes: list[str] = field(default_factory=list)
+    third_party: str | None = None  # why only its interface is kept (params/provenance.py)
 
     def to_json(self) -> dict[str, Any]:
         d = asdict(self)
+        # the marks of third-party code only where they are set
+        if d["third_party"] is None:
+            del d["third_party"]
+        for p in d["params"]:
+            if not p["withheld"]:
+                del p["withheld"]
         return d
 
     @classmethod

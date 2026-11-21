@@ -103,6 +103,70 @@ def _cases():
                 inputs=vals19,
             )
         )
+    cs += _few_cases()
+    return cs
+
+
+def _few_inputs(sr, seed: str, box=30.0) -> dict:
+    """inputs of the filter for the sigmas ``sr`` (NaN allowed) at uniform positions"""
+    sr = np.asarray(sr, dtype=np.float64)
+    n = sr.size
+    k = np.arange(1, n + 1)
+    return {
+        "P": synth.CounterRNG(2026, "C02c.badpoints.few." + seed).uniform((n, 3)) * box + 1.0,
+        "sr": sr.reshape(1, -1),
+        "vol": synth.CounterRNG(2026, "C02c.badpoints.vol").uniform((9, 8, 7)) * 10 + 100,
+        "A": (50.0 + 10.0 * np.mod(k, 7)).reshape(1, -1),
+        "c": (100.0 + np.mod(k, 5)).reshape(1, -1),
+    }
+
+
+def _few_sigmas() -> dict:
+    """the few-point cases' sigmas: one and two points (MATLAB's scalar true), 40 within a ratio
+    of 2 (the short path), with NaN, 8 beyond it (the long path's early return), and the
+    designed histogram's sigmas with NaN among them (the long path)"""
+    r = synth.CounterRNG(2026, "C02c.badpoints.few.sr")
+    s40 = 3.0 + 2.5 * r.uniform((40,))
+    s40n = s40.copy()
+    s40n[[3, 11, 25, 31]] = np.nan
+    big = designed_sigma_r()
+    bign = big.copy()
+    bign[[0, 100, 400, 401, 700]] = np.nan
+    return {
+        "n1": [3.4],
+        "n2": [np.nan, 3.3],
+        "short40": s40,
+        "short40_nan": s40n,
+        "early8": 3.0 + 13.0 * (np.arange(8) + 0.5) / 8,
+        "long_nan": bign,
+    }
+
+
+def _few_cases():
+    cs = []
+    for name, sr in _few_sigmas().items():
+        vals = {k: Value(lambda v=v: v) for k, v in _few_inputs(sr, name).items()}
+        bgs = [[100.0, 100.0, 2.6, 3.0]]
+        if name.startswith("short40"):
+            bgs.append([100.0, 100.0, 4.4, 3.0])  # the noise rule at min(0.9 noise, thr 4)
+        for bg in bgs:
+            cs.append(
+                Case(
+                    f"few.{name}.noise{bg[2]:g}",
+                    matlab="filter_bad_points_in_detection",
+                    args=[
+                        In("P"),
+                        In("sr"),
+                        4.0 if name.startswith("short") else 3.0,
+                        bg,
+                        In("vol"),
+                        In("A"),
+                        In("c"),
+                    ],  # fmt: skip
+                    python=_py_filter,
+                    inputs=vals,
+                )
+            )
     return cs
 
 
@@ -295,3 +359,113 @@ def test_the_filter_is_deterministic(cam):
     a = BP.filter_bad_points(I["P"], I["sr"].ravel(), 3.0, [100, 100, 2.6, cam])
     b = BP.filter_bad_points(I["P"], I["sr"].ravel(), 3.0, [100, 100, 2.6, cam])
     assert np.array_equal(a, b)
+
+
+# -- few points (task C02c's follow-up, probes fu1 and fu3 to fu3c) --------------------------------
+
+
+def test_fewer_than_three_points_give_one_true():
+    """MATLAB's filter returns a scalar true for one and two points, NaN among them (no MathWorks
+    call is made), with which the detector keeps them"""
+    P = np.array([[5.0, 5.0, 5.0], [9.0, 5.0, 5.0]])
+    for sr in ([3.4], [np.nan, 3.3], [0.5, 40.0]):
+        keep = BP.filter_bad_points(P[: len(sr)], np.array(sr), 3.0, [100, 100, 2.6, 3.0])
+        assert keep.shape == (1,) and keep[0]
+
+
+def test_the_short_path_is_taken_up_to_the_ratio_2():
+    """prctile(sr, 95) <= 2 prctile(sr, 5) skips the histogram analysis (on 5 points the two
+    percentiles are the extremes; the ratio 2 itself takes it, 2.0000000003 does not)"""
+    assert BP.short_path(np.array([3.0, 4.0, 6.0, 5.0, 5.5]))
+    assert not BP.short_path(np.array([3.0, 4.0, 6.000000001, 5.0, 5.5]))
+    assert BP.short_path(np.full(5, 4.2))
+    assert BP.short_path(np.array([2.0, np.nan, 4.0, 3.0]))
+    assert not BP.short_path(designed_sigma_r())
+
+
+def test_the_short_path_removes_as_a_with_thr_and_nan_below_every_threshold():
+    """with the neighbour counts given (MATLAB's lists mocked in the probes): 1 neighbour removed;
+    2 and 3 below thr removed; 2 to 8 below min(the noise threshold, thr) removed; a NaN sigma
+    removed with 1 to 8 neighbours and kept with more"""
+    sr = np.array(
+        [2.0, 2.5, 2.9, 3.1, 3.5, 4.0, 2.2, 2.7, 3.3, 3.8, np.nan, np.nan, np.nan, np.nan]
+    )
+    cnt = np.array([1, 1, 2, 2, 2, 2, 3, 3, 5, 5, 1, 3, 8, 9])
+    P = np.zeros((sr.size, 3))
+    keep, info = BP.filter_bad_points_info(
+        P, sr, 3.0, [100, 100, 2.65, 3.0], oracle={"counts": cnt}
+    )
+    assert info["path"] == "A318" and info["stage3"] is None
+    assert keep.astype(int).tolist() == [0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1]
+    keep, _ = BP.filter_bad_points_info(P, sr, 3.4, [100, 100, 4.0, 3.0], oracle={"counts": cnt})
+    assert keep[8] == 0 and keep[9] == 1  # 3.3 below min(0.9 x 4, 3.4) with 5 neighbours
+    # three neighbours: below min(thr, camera threshold, 2 noise) only (probe fu10: kept from 2.6
+    # below thr 4 with camera 3.5 and noise 1); two: below thr
+    s3 = np.array([2.6, 2.75, 3.2, 3.95, 2.7, 3.3])
+    c3 = np.array([3, 3, 3, 3, 2, 2])
+    keep, _ = BP.filter_bad_points_info(np.zeros((6, 3)), s3, 4.0, [100, 100, 1.0, 3.5],
+                                        oracle={"counts": c3})  # fmt: skip
+    assert keep.astype(int).tolist() == [1, 1, 1, 1, 0, 0]
+
+
+def test_few_sigmas_below_the_99th_percentile_keep_every_point():
+    """the long path with fewer than 10 sigmas below their 99th percentile returns every point
+    (lines 58-60 to 115; 5 to 10 points kept whatever their neighbours, 11 went on)"""
+    for n in (5, 10):
+        sr = 3.0 + 13.0 * (np.arange(n) + 0.5) / n
+        keep, info = BP.filter_bad_points_info(np.zeros((n, 3)), sr, 3.0, [100, 100, 2.6, 3.0])
+        assert info["path"] == "early" and keep.size == n and keep.all()
+    sr = 3.0 + 13.0 * (np.arange(11) + 0.5) / 11
+    P = np.arange(33, dtype=np.float64).reshape(11, 3)
+    _, info = BP.filter_bad_points_info(P, sr, 3.0, [100, 100, 2.6, 3.0])
+    assert info["path"] != "early"
+
+
+def test_nan_sigmas_on_the_long_path():
+    """NaN left out of the percentiles, the histogram and the bin count (MATLAB's max and min
+    leave the NaN of std out), and never removed for its sigma (probe fu3c: frame 28's call with
+    five NaN, each point given two neighbours, kept them)"""
+    sr = designed_sigma_r()
+    srn = sr.copy()
+    srn[[0, 100, 400, 401, 700]] = np.nan
+    cnt = np.full(sr.size, 2)
+    P = np.zeros((sr.size, 3))
+    keep, info = BP.filter_bad_points_info(
+        P, srn, 3.0, [100, 100, 2.6, 3.0], oracle={"counts": cnt}
+    )
+    assert info["path"] == "B" and info["nb0"] == 60
+    assert keep[[0, 100, 400, 401, 700]].all()
+    # MATLAB's min leaves NaN out: the range of the bin count is that of the finite sigmas (a
+    # long tail: the Freedman-Diaconis count above 60)
+    r = synth.CounterRNG(2026, "C02c.badpoints.tail")
+    tail = np.r_[3.0 + np.abs(r.normal((1000,))) * 0.6, np.linspace(8.0, 30.0, 40)]
+    nb_tail = BP.stage12(tail)[1]
+    tail[[5, 50]] = np.nan
+    assert nb_tail > 60 and BP.stage12(tail)[1] > 60
+
+
+def test_line_160s_bound():
+    """C at line 160 when the background peak's bin centre is at or above 2 x max(camera
+    threshold, noise) while the noise is at most 2 camera thresholds (designed histograms: 2
+    noise to 0.02 at noises 2.4 to 3.5, 2 cam at cameras 5 and 6; the demo's camera 3: 6), 2.5 x
+    noise above that, never with a camera threshold of 1.25 or less below the noise"""
+    assert BP.early_c_bound(2.65, 3.0) == 6.0
+    assert BP.early_c_bound(2.65, 1.5) == 5.3
+    assert BP.early_c_bound(3.5, 2.0) == 7.0
+    assert BP.early_c_bound(2.65, 5.0) == 10.0
+    assert BP.early_c_bound(3.0, 1.5) == 6.0  # noise at 2 cam: the first form (5.95 to 6.05)
+    assert BP.early_c_bound(3.5, 1.5) == 8.75
+    assert BP.early_c_bound(6.0, 2.5) == 15.0
+    assert BP.early_c_bound(1.2, 1.25) == 2.5
+    assert BP.early_c_bound(2.2, 1.25) == np.inf
+    assert BP.early_c_bound(2.65, 1.0) == np.inf
+
+
+def test_line_160s_bound_in_the_decision():
+    """the designed histogram with its first bin's centre moved: C from the bound on, the first
+    valley's analysis below it (camera threshold 1.5, noise 2.65: 5.3; C02's rule took C from 3)"""
+    c = _hist(HEAD[:6])
+    for centre, want in ((3.1, False), (5.2, False), (5.4, True)):
+        e = E - E[0] + centre - 0.445 / 2
+        path, _, info = BP.decide({"cnt": c, "e": e, "lst": [1, 6, 14, 39]}, 3.0, 2.65, 1.5)
+        assert (path == "C") == want and abs(info["sig_bp"] - centre) < 1e-9, centre

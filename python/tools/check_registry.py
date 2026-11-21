@@ -10,6 +10,10 @@
     python tools/check_registry.py skeleton NAME [NAME ...] --matlab-root TREE
         print a spec skeleton (decorator and signature) for a MATLAB function
 
+Third-party MATLAB code (petakit5d/params/provenance.py) is kept as its interface only, in
+all three: its validators are withheld and not compared (names, kinds, order and defaults
+are), and its skeleton takes nothing from its header.
+
 Run from python/ with PYTHONPATH=src (or the package installed).
 """
 
@@ -60,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         write_extract,
     )
     from petakit5d.params.matlab_source import extract_tree
+    from petakit5d.params.provenance import interface_only
 
     if a.command == "extract":
         if not a.matlab_root:
@@ -78,12 +83,15 @@ def main(argv: list[str] | None = None) -> int:
             if n not in tree:
                 print(f"# {n}: no inputParser block found", file=sys.stderr)
                 continue
-            print(skeleton(tree[n], Path(a.matlab_root) / tree[n].file))
+            fn = interface_only(tree[n])
+            # meanings and summary come from the header, which third-party code does not give
+            print(skeleton(fn, None if fn.third_party else Path(a.matlab_root) / fn.file))
         return 0
 
     specs = REGISTRY.specs()
     if a.matlab_root:
-        matlab = extract_tree(a.matlab_root, {s.matlab_name for s in specs})
+        tree = extract_tree(a.matlab_root, {s.matlab_name for s in specs})
+        matlab = {k: interface_only(v) for k, v in tree.items()}
         source = str(a.matlab_root)
     else:
         matlab = read_extract(a.extract)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import textwrap
@@ -97,10 +98,13 @@ def test_package_declarations():
     assert "XR_stitching_frame_v1" in np_ and "XR_cppDeconFrame3D" in np_
     # what the demos call that is no pipeline function (E05's coverage review)
     assert {"setup", "get_uuid", "readtiff_matlab"} <= set(np_)
-    with pytest.raises(
-        LookupError, match=r"not ported yet \(planned as petakit5d.detection.run_detection"
-    ):
-        REGISTRY.find("XR_runDetection3D")
+    # a planned function that is not registered yet says so (any one: they are registered in turn)
+    registered = {s.matlab_name for s in REGISTRY.specs()}
+    pending = [(m, p) for m, p, *_ in PLANNED if m not in registered]
+    if pending:
+        name, python = pending[0]
+        with pytest.raises(LookupError, match=rf"not ported yet \(planned as {re.escape(python)}"):
+            REGISTRY.find(name)
     import petakit5d.matlab as pm
 
     with pytest.raises(AttributeError, match="not ported"):

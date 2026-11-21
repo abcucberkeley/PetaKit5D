@@ -699,8 +699,13 @@ def postfit(
     if remove_redundant_fits:
         ps = _take(ps, remove_redundant(ps, radius))
     ps = _take(ps, np.asarray(ps["hval_Ar"], dtype=bool))
-    if background_info is not None and np.asarray(ps["x"]).size > 0:
+    n = np.asarray(ps["x"]).size
+    if background_info is not None and n > 0:
         keep = filter_bad_points(ps, residual_sigma_threshold, background_info, vol)
+        if keep.size == 1 and n > 1:
+            # the filter's scalar true for fewer than three points: MATLAB's detector keeps the
+            # two (task C02c, probe fu1: frames of one and two spots)
+            keep = np.repeat(keep, n)
         ps = _take(ps, keep)
     ps["isPSF"] = ~np.asarray(ps["hval_AD"], dtype=bool)
     return ps

@@ -562,9 +562,11 @@ def b_detection_frames(folder):
     chans = [str(ex / f"ch{c}") + os.sep for c in (1, 2)]
     movie = {"source": chans[0], "channels": chans, "framePathsDS": cols, "zAniso": 2.5}
     run.run_detection_frame_parallel(
-        movie, [[1.3, 1.5], [1.3, 1.5]], [chans[0] + "Analysis" + os.sep],
+        movie,
+        sigma=[[1.3, 1.5], [1.3, 1.5]],
+        results_path=[chans[0] + "Analysis" + os.sep],
         detection_method="lowSNR",
-    )  # fmt: skip
+    )
 
 
 # name, builder, the captured framework call (1-based; 0: the frames the wrapper runs itself

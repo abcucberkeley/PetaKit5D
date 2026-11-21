@@ -525,28 +525,51 @@ def _as_number(v: Any) -> float:
 
 @register(
     "XR_loadConditionData3D",
+    # third-party code: the port's own checks (accepts=), made from MATLAB's behaviour
+    # (tests/params/test_third_party_checks.py)
     Param(
         "condDir",
-        "@(x) ischar(x) && ~any(strcmpi(x,     {'Parameters', 'MovieSelector', "
-        "'IgnoreEmptyFolders', 'FrameRate'}))",
+        None,
         "The condition folder (its movie folders), or one movie's folder.",
+        accepts="char & !in(FrameRate,MovieSelector)",
     ),
     Param("chNames", None, "The channel folders' names, the master channel first."),
     Param("markers", None, "The channels' fluorescent markers (getFluorPropStruct's names)."),
     Param(
         "maxlevel",
-        "@(x) isempty(x) || (isnumeric(x) && abs(round(x))==x)",
+        None,
         "Folder levels below condDir searched for movies.",
+        accepts="empty | numeric & !scalar | numeric & nonnegative-whole",
     ),
-    Param("MovieSelector", "@ischar", "Text in a movie folder's name."),
-    Param("IgnoreExpNumber", "@islogical", "Order the movies by name, not by their number."),
-    Param("ChannelPatterns", "@iscell", "Channel patterns (no effect: measured)."),
-    Param("Angle", "@isscalar", "Skew angle in degrees."),
-    Param("PixelSize", "@isscalar", "Pixel size."),
-    Param("dz", "@isnumeric", "Scan step ([]: from the folders' _z0p<digits> name)."),
-    Param("ObjectiveScan", "@isscalar", "Objective scan (zAniso = dz / PixelSize)."),
-    Param("Reversed", "@isscalar", "Reversed scan."),
-    Param("FrameRate", "@isscalar", "Frame rate ([]: from the frames' <digits>msec names)."),
+    Param("MovieSelector", None, "Text in a movie folder's name.", accepts="char"),
+    Param(
+        "IgnoreExpNumber",
+        None,
+        "Order the movies by name, not by their number.",
+        accepts="logical",
+    ),
+    Param("ChannelPatterns", None, "Channel patterns (no effect: measured).", accepts="cell"),
+    Param("Angle", None, "Skew angle in degrees.", accepts="scalar"),
+    Param("PixelSize", None, "Pixel size.", accepts="scalar"),
+    Param(
+        "dz",
+        None,
+        "Scan step ([]: from the folders' _z0p<digits> name).",
+        accepts="numeric",
+    ),
+    Param(
+        "ObjectiveScan",
+        None,
+        "Objective scan (zAniso = dz / PixelSize).",
+        accepts="scalar",
+    ),
+    Param("Reversed", None, "Reversed scan.", accepts="scalar"),
+    Param(
+        "FrameRate",
+        None,
+        "Frame rate ([]: from the frames' <digits>msec names).",
+        accepts="scalar",
+    ),
     keep_unmatched=True,
     task="C04",
     matlab_out=struct_array,

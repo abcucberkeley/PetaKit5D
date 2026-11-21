@@ -227,8 +227,8 @@ b.npz` measure the difference.
 
 | System | Pinned cases (non-FFT kernels) | Result |
 |---|---|---|
-| Linux x86-64: the cluster (Xeon Gold 6146, AVX-512, glibc 2.28, GCC 13.2), Python 3.12 | 64 | the pins (made there) |
-| Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 64 | the same bits |
+| Linux x86-64: the cluster (Xeon Gold 6146, AVX-512, glibc 2.28, GCC 13.2), Python 3.12 | 65 | the pins (made there) |
+| Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 65 | the same bits |
 | macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | the same bits (before the filters' and the deskew kernels' NaN fix the 2 `specials.*_infinities` cases differed in NaN signs only); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
 | Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | the same bits (the CI, measured 2026-11-19: see "How Windows is tested"); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
 
