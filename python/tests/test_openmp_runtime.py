@@ -1,5 +1,7 @@
 """One OpenMP runtime in a port process on Linux: the extension modules share the libgomp of the
-cpp-zarr and cpp-tiff wheels (cmake/Pk5dOpenMP.cmake, docs/decisions/0008-openmp-runtime.md)."""
+cpp-zarr and cpp-tiff wheels (cmake/Pk5dOpenMP.cmake, docs/decisions/0008-openmp-runtime.md); and
+on Windows with the modules built with MinGW-w64, which share the libgomp-1.dll of those wheels
+(docs/decisions/0011-windows-toolchain.md)."""
 
 import importlib.util
 import json
@@ -14,7 +16,8 @@ import pytest
 
 from petakit5d import _ext
 
-pytestmark = pytest.mark.skipif(
+# the Linux tests (the Windows one is at the end)
+linux = pytest.mark.skipif(
     not os.path.exists("/proc/self/maps"), reason="the mapped libraries are read from /proc (Linux)"
 )
 
@@ -70,6 +73,7 @@ def _need_wheels():
 
 
 @pytest.mark.parametrize("order", ["ours_first", "io_first"])
+@linux
 def test_one_openmp_runtime_with_the_io_packages(order, tmp_path):
     info = _build_info()
     _need_wheels()
@@ -101,6 +105,7 @@ def test_one_openmp_runtime_with_the_io_packages(order, tmp_path):
             assert os.path.dirname(first[0]) in [os.path.realpath(p) for p in _ext.__path__]
 
 
+@linux
 def test_shared_runtime_sits_next_to_the_modules():
     info = _build_info()
     if info["openmp_shared"] in ("", "off"):
@@ -110,6 +115,7 @@ def test_shared_runtime_sits_next_to_the_modules():
     assert info["openmp_shared"] in info["openmp"]
 
 
+@linux
 def test_build_info_names_the_runtime_the_modules_need():
     info = _build_info()
     if not info["openmp_version"]:
@@ -129,6 +135,7 @@ def test_build_info_names_the_runtime_the_modules_need():
         assert needed == [info["openmp_shared"]]
 
 
+@linux
 def test_finder_names_the_io_packages_libgomp():
     _need_wheels()
     run = subprocess.run(
@@ -161,6 +168,7 @@ def test_finder_names_the_io_packages_libgomp():
     assert run.stdout.splitlines()[-1] == "[]"
 
 
+@linux
 def test_finder_prints_nothing_without_the_packages():
     # an interpreter that can't see them: isolated, without site-packages
     run = subprocess.run(
@@ -216,12 +224,14 @@ def _core_module():
     return _ext.load("core").__file__, info["openmp_shared"]
 
 
+@linux
 def test_check_passes_a_module_of_the_build():
     module, soname = _core_module()
     rc, out = _check(module, soname)
     assert rc == 0, out
 
 
+@linux
 def test_check_fails_a_module_of_another_runtime():
     module, soname = _core_module()
     rc, out = _check(module, "libgomp.so.1")
@@ -277,6 +287,7 @@ def _configure(tmp_path, *defs):
     return run.returncode, out
 
 
+@linux
 def test_build_shares_the_io_packages_runtime(tmp_path):
     _need_wheels()
     first = subprocess.run(
@@ -297,6 +308,7 @@ def test_build_shares_the_io_packages_runtime(tmp_path):
     assert "shared=[off]" in out
 
 
+@linux
 def test_build_refuses_a_runtime_without_the_kernels_entry_points(tmp_path):
     # a libgomp with only GOMP_parallel and the omp_ calls: the probe can't link the dynamic
     # schedules and the single construct
@@ -318,6 +330,7 @@ def test_build_refuses_a_runtime_without_the_kernels_entry_points(tmp_path):
     assert "GOMP_loop" in out or "GOMP_single_start" in out
 
 
+@linux
 def test_build_leaves_a_runtime_named_as_the_toolchains(tmp_path):
     # a file named libgomp.so.1 is shared by the loader already (and AUTO leaves it alone)
     stub = _compile(tmp_path, "gomp-named", "int omp_get_num_procs(void) { return 1; }\n",
@@ -330,6 +343,7 @@ def test_build_leaves_a_runtime_named_as_the_toolchains(tmp_path):
     assert f"no file {tmp_path / 'no_such.so'}" in out
 
 
+@linux
 def test_check_fails_an_entry_point_the_runtime_lacks(tmp_path):
     # linked against the shared runtime, but calling a function it doesn't define: the symbol
     # stays without a version
@@ -348,3 +362,68 @@ def test_check_fails_an_entry_point_the_runtime_lacks(tmp_path):
     probe2 = _compile(tmp_path, "probe2", source.replace(" GOMP_no_such_entry();", ""), str(lib))
     rc, out = _check(probe2, soname)
     assert rc == 0, out
+
+
+# --- Windows: the modules built with MinGW-w64 and the I/O packages share one libgomp-1.dll ---
+
+# the OpenMP runtimes loaded after each step (the process's modules), as _PROBE on Linux
+_WIN_PROBE = _PROBE.replace(
+    """def runtimes():
+    found = []
+    with open("/proc/self/maps") as f:
+        for line in f:
+            p = line.split(None, 5)
+            name = os.path.basename(p[5].strip()) if len(p) == 6 else ""
+            if name.startswith(("libgomp", "libomp", "libiomp5")):
+                if p[5].strip() not in found:
+                    found.append(p[5].strip())
+    return found""",
+    """def runtimes():
+    import ctypes
+    k32 = ctypes.WinDLL("kernel32")
+    k32.GetCurrentProcess.restype = ctypes.c_void_p
+    k32.K32EnumProcessModules.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32,
+                                          ctypes.POINTER(ctypes.c_uint32)]
+    k32.GetModuleFileNameW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_uint32]
+    mods, n = (ctypes.c_void_p * 4096)(), ctypes.c_uint32()
+    assert k32.K32EnumProcessModules(k32.GetCurrentProcess(), mods, ctypes.sizeof(mods),
+                                     ctypes.byref(n))
+    found, buf = [], ctypes.create_unicode_buffer(32768)
+    for h in mods[: n.value // ctypes.sizeof(ctypes.c_void_p)]:
+        k32.GetModuleFileNameW(h, buf, len(buf))
+        if os.path.basename(buf.value).lower().startswith(("libgomp", "libomp", "libiomp5",
+                                                           "vcomp")):
+            found.append(buf.value)
+    return found""",
+)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the loaded modules of a Windows process")
+@pytest.mark.parametrize("order", ["ours_first", "io_first"])
+def test_one_openmp_runtime_with_the_io_packages_on_windows(order, tmp_path):
+    assert _WIN_PROBE != _PROBE
+    info = _build_info()
+    _need_wheels()
+    if "libgomp-1.dll" not in info["openmp"]:
+        pytest.skip(
+            f"built with {info['openmp']!r}: a runtime of its own beside the I/O packages' "
+            "libgomp-1.dll (docs/decisions/0011-windows-toolchain.md)"
+        )
+    run = subprocess.run(
+        [sys.executable, "-c", _WIN_PROBE, order, str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    steps = json.loads(run.stdout.splitlines()[-1])
+    last = steps["io" if order == "ours_first" else "ours"]
+    assert [os.path.basename(p).lower() for p in last] == ["libgomp-1.dll"], last
+    if order == "ours_first":
+        # before the I/O packages, our modules load the copy next to them
+        first = steps["ours"]
+        assert len(first) == 1, first
+        assert os.path.dirname(first[0]).lower() in [
+            os.path.realpath(p).lower() for p in _ext.__path__
+        ]

@@ -27,6 +27,8 @@ import os
 
 import numpy as np
 
+from petakit5d.params import Param, register
+
 __all__ = [
     "FIELD_ORDER",
     "CameraSettingsError",
@@ -521,19 +523,95 @@ def _results_paths(results_path, movies: list[dict]) -> list[str]:
     return paths[: len(movies)]
 
 
+def _is_default(value, default) -> bool:
+    """Whether a MATLAB-side value equals the default ([] for None; a logical or number by
+    value; text by text)."""
+    if default is None:
+        return value is None or np.size(value) == 0
+    if isinstance(default, str):
+        return isinstance(value, str) and value == default
+    a = np.asarray(value).reshape(-1)
+    return a.size == 1 and float(a[0]) == float(default)
+
+
+# the two runners' parameters the port takes at MATLAB's default only
+_DEFAULTS_ONLY = (
+    ("RemoveRedundant", True),
+    ("RedundancyRadius", 0.5),
+    ("RemoveSecondaryRedundant", True),
+    ("Master", None),
+    ("Alpha", 0.05),
+    ("CellMask", None),
+    ("FileName", "Detection3D.mat"),
+    ("FilterByResidualSigma", True),
+)
+
+
+def _defaults_only(runner: str, values) -> None:
+    """NotImplementedError for a parameter of ``_DEFAULTS_ONLY`` (``values`` in its order) off
+    its default"""
+    for (name, default), value in zip(_DEFAULTS_ONLY, values, strict=True):
+        if not _is_default(value, default):
+            raise NotImplementedError(f"{runner}: {name} {value!r}: the default is ported")
+
+
+@register(
+    "XR_runDetection3D",
+    Param("data", None, "Movies (the structure XR_loadConditionData3D returns).", convert="same"),
+    Param("Sigma", None, "PSF sigmas, one row [sigma_xy, sigma_z] per channel.", convert="same"),
+    Param("Mode", None, "Fitted parameters ('xyzAc' only)."),
+    Param("FitMixtures", None, "Fit mixtures (false only)."),
+    Param("MaxMixtures", None, "Most components of a mixture fit."),
+    Param("RemoveRedundant", None, "Remove redundant detections (true only)."),
+    Param("RedundancyRadius", None, "Radius of redundant detections (the default only)."),
+    Param("RemoveSecondaryRedundant", None, "The same in the other channels (true only)."),
+    Param("Overwrite", None, "Detect movies whose result exists again."),
+    Param("Master", None, "Master channel ([] only: the channel of data.source)."),
+    Param("Alpha", None, "Significance level of the detection tests (the default only)."),
+    Param("CellMask", None, "Cell mask ([] only)."),
+    Param("FileName", None, "Result file name (the default only)."),
+    Param("WindowSize", None, "Detection window size ([] only).", convert="same"),
+    Param(
+        "ResultsPath",
+        None,
+        "Results folder of each movie (default <source>/Analysis/).",
+        matlab_default="arrayfun(@(i) [i.source 'Analysis' filesep], data, 'unif', 0)",
+    ),
+    Param("DetectionMethod", None, "'speedup' or 'lowSNR'."),
+    Param("WriteAmira", None, "Amira files (MATLAB's writer fails: an empty folder stays)."),
+    Param("BackgroundCorrection", None, "Correct the background before the detection."),
+    Param("FilterByResidualSigma", None, "Filter detections by their residuals (true only)."),
+    Param("Frames", None, "Only these frames (1-based).", python_only=True),
+    Param(
+        "ResidualSigmaThreshold",
+        None,
+        "The camera's residual threshold (None: from the settings file above source).",
+        python_only=True,
+    ),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    task="C02",
+)
 def run_detection(
     data,
-    sigma=None,
-    results_path=None,
     *,
-    overwrite: bool = False,
-    window_size=None,
+    sigma=None,
     mode: str = "xyzAc",
     fit_mixtures: bool = False,
     max_mixtures: int = 3,
+    remove_redundant: bool = True,
+    redundancy_radius: float = 0.5,
+    remove_secondary_redundant: bool = True,
+    overwrite: bool = False,
+    master=None,
+    alpha: float = 0.05,
+    cell_mask=None,
+    file_name: str = "Detection3D.mat",
+    window_size=None,
+    results_path=None,
     detection_method: str = "speedup",
-    background_correction: bool = False,
     write_amira: bool = True,
+    background_correction: bool = False,
+    filter_by_residual_sigma: bool = True,
     frames=None,
     residual_sigma_threshold: float | None = None,
     num_threads: int | None = None,
@@ -570,6 +648,11 @@ def run_detection(
             f"run_detection: DetectionMethod {detection_method!r}: 'speedup' and 'lowSNR' are "
             "ported"
         )
+    _defaults_only(
+        "run_detection",
+        (remove_redundant, redundancy_radius, remove_secondary_redundant, master, alpha,
+         cell_mask, file_name, filter_by_residual_sigma),
+    )  # fmt: skip
     if window_size is not None and np.size(window_size) != 0:
         # MATLAB's detectors take 'WindowSize' otherwise than the port's window (measured: 4,830
         # detections against 3,128 for [2 2] on a demo frame)
@@ -722,19 +805,81 @@ def _read_frame_entry(path: str) -> dict:
     return {f: (list(e[f]) if f == "dRange" else e[f]) for f in FIELD_ORDER}
 
 
+@register(
+    "XR_runDetection3D_frame_parallel",
+    Param("data", None, "Movies (the structure XR_loadConditionData3D returns).", convert="same"),
+    Param("Sigma", None, "PSF sigmas, one row [sigma_xy, sigma_z] per channel.", convert="same"),
+    Param("Mode", None, "Fitted parameters ('xyzAc' only)."),
+    Param("FitMixtures", None, "Fit mixtures (false only)."),
+    Param("MaxMixtures", None, "Most components of a mixture fit."),
+    Param("RemoveRedundant", None, "Remove redundant detections (true only)."),
+    Param("RedundancyRadius", None, "Radius of redundant detections (the default only)."),
+    Param("RemoveSecondaryRedundant", None, "The same in the other channels (true only)."),
+    Param("Overwrite", None, "Detect movies whose result exists again, and their frames."),
+    Param("Master", None, "Master channel ([] only: the channel of data.source)."),
+    Param("Alpha", None, "Significance level of the detection tests (the default only)."),
+    Param("CellMask", None, "Cell mask ([] only)."),
+    Param("FileName", None, "Result file name (the default only)."),
+    Param("WindowSize", None, "Detection window size ([] only).", convert="same"),
+    Param(
+        "ResultsPath",
+        None,
+        "Results folder of each movie (default <source>/Analysis/).",
+        matlab_default="arrayfun(@(i) [i.source 'Analysis' filesep], data, 'unif', 0)",
+    ),
+    Param(
+        "DetectionMethod",
+        None,
+        "'speedup' or 'lowSNR' (the default 'update_1' runs XR_pointSourceDetection3D_1: not "
+        "ported).",
+    ),
+    Param("WriteAmira", None, "Amira files (MATLAB's writer fails: an empty folder stays)."),
+    Param("BackgroundCorrection", None, "Correct the background before the detection."),
+    Param("FilterByResidualSigma", None, "Filter detections by their residuals (true only)."),
+    Param("Frames", None, "Only these frames (1-based).", python_only=True),
+    Param(
+        "ResidualSigmaThreshold",
+        None,
+        "The camera's residual threshold (None: from the settings file above source).",
+        python_only=True,
+    ),
+    Param("numThreads", None, "Threads of a frame (None: the CPUs available).", python_only=True),
+    Param(
+        "parseCluster",
+        None,
+        "Run the frames as Slurm jobs (false: here, as MATLAB's runner computes them).",
+        python_only=True,
+    ),
+    Param("localWorkerNum", None, "Processes of a local pool (1: this one).", python_only=True),
+    Param("jobLogDir", None, "Job log folder of the job framework.", python_only=True),
+    Param("cpusPerTask", None, "CPUs per cluster task.", python_only=True),
+    Param(
+        "memAllocate", None, "Memory per cluster task (None: the framework's).", python_only=True
+    ),
+    Param("configFile", None, "The job framework's configuration file.", python_only=True),
+    task="C02c",
+)
 def run_detection_frame_parallel(
     data,
-    sigma=None,
-    results_path=None,
     *,
-    overwrite: bool = False,
-    window_size=None,
+    sigma=None,
     mode: str = "xyzAc",
     fit_mixtures: bool = False,
     max_mixtures: int = 3,
-    detection_method: str | None = None,
-    background_correction: bool = False,
+    remove_redundant: bool = True,
+    redundancy_radius: float = 0.5,
+    remove_secondary_redundant: bool = True,
+    overwrite: bool = False,
+    master=None,
+    alpha: float = 0.05,
+    cell_mask=None,
+    file_name: str = "Detection3D.mat",
+    window_size=None,
+    results_path=None,
+    detection_method: str = "update_1",
     write_amira: bool = True,
+    background_correction: bool = False,
+    filter_by_residual_sigma: bool = True,
     frames=None,
     residual_sigma_threshold: float | None = None,
     num_threads: int | None = None,
@@ -768,16 +913,17 @@ def run_detection_frame_parallel(
     frame-parallel runner repeats the previous frame's detections there).
 
     ``detection_method`` 'lowSNR' (what ``XR_runDetTrack3d`` passes) or 'speedup'; MATLAB's
-    default (None here) runs ``XR_pointSourceDetection3D_1``, which is not ported. The other
-    options as ``run_detection``'s. The job framework's: ``parse_cluster`` (MATLAB's runner
-    computes in its session: False), ``local_worker_num`` (a pool of that many processes),
-    ``job_log_dir``, ``cpus_per_task``, ``mem_allocate``, ``config_file`` (``run_tasks``'s).
-    In one process the detector's t threshold is computed once (MATLAB's per-session quirk);
-    a pool's or cluster's processes each compute their own, as MATLAB's workers do. Returns per
-    movie its ``frameInfo`` entries."""
-    if detection_method is None:
+    default 'update_1' runs ``XR_pointSourceDetection3D_1``, which is not ported. The other
+    options as ``run_detection``'s (its parameters, in MATLAB's order; ``sigma`` and the rest
+    by name). The job framework's (the port's): ``parse_cluster`` (MATLAB's runner computes in
+    its session: False), ``local_worker_num`` (a pool of that many processes), ``job_log_dir``,
+    ``cpus_per_task``, ``mem_allocate``, ``config_file`` (``run_tasks``'s). In one process the
+    detector's t threshold is computed once (MATLAB's per-session quirk); a pool's or cluster's
+    processes each compute their own, as MATLAB's workers do. Returns per movie its
+    ``frameInfo`` entries."""
+    if detection_method == "update_1":
         raise NotImplementedError(
-            "run_detection_frame_parallel: MATLAB's default DetectionMethod runs "
+            "run_detection_frame_parallel: MATLAB's default DetectionMethod 'update_1' runs "
             "XR_pointSourceDetection3D_1, which is not ported; give 'lowSNR' or 'speedup'"
         )
     if sigma is None or np.size(sigma) == 0:
@@ -793,6 +939,11 @@ def run_detection_frame_parallel(
             f"run_detection_frame_parallel: DetectionMethod {detection_method!r}: 'speedup' and "
             "'lowSNR' are ported"
         )
+    _defaults_only(
+        "run_detection_frame_parallel",
+        (remove_redundant, redundancy_radius, remove_secondary_redundant, master, alpha,
+         cell_mask, file_name, filter_by_residual_sigma),
+    )  # fmt: skip
     if window_size is not None and np.size(window_size) != 0:
         raise NotImplementedError(
             "run_detection_frame_parallel: WindowSize: the default (empty) is ported"

@@ -2,7 +2,9 @@
 ``medfilt1`` (order 3) in the forms the point detection calls them (R2024b), written from
 MATLAB's documentation and black-box measurements of their outputs (task C02; no MathWorks
 source was read): bit for bit on every recorded call of the detection's bad-point filter (136
-histograms, 149 peak searches).
+histograms, 149 peak searches). ``histcounts`` of data with one finite value or none, and with
+NaN or infinities beside it, as measured on 712 designed calls (task C02c: equal on 640, the
+other 72, bins near the value's resolution, refused).
 """
 
 from __future__ import annotations
@@ -22,19 +24,50 @@ def _pow10(k: int) -> float:
     return float(_el.power(np.array(10.0), np.array(float(k))))
 
 
+def _half_grid(q: float, up: bool) -> float:
+    """q to the nearest whole number, a tie up (``up``) or down"""
+    f = math.floor(q)
+    r = q - f
+    if r > 0.5 or (r == 0.5 and up):
+        f += 1
+    return float(f)
+
+
+def _constant_edges(v: float, nbins: int) -> np.ndarray:
+    """the edges of ``histcounts`` for one finite value ``v`` (task C02c, probes hc1 and hc2, 512
+    calls): ``v - 0.5`` and ``v + 0.5``, each to the nearest multiple of 0.5 with a tie toward
+    ``v`` (so 2.814 gives [2.5, 3.5], 6.36 [6, 7], 0.25 [0, 0.5]), and ``nbins`` equal bins
+    between them (``left + k * ((right - left) / nbins)``, the last edge ``right``)"""
+    left = _half_grid(2.0 * (v - 0.5), True) / 2.0
+    right = _half_grid(2.0 * (v + 0.5), False) / 2.0
+    w = (right - left) / nbins
+    if not w >= 1024.0 * math.ulp(max(abs(left), abs(right))):
+        # MATLAB widens the limits when the bins come near the value's resolution (v = 1e15 +
+        # 0.25 with 13 bins or more); not measured further
+        raise NotImplementedError("histcounts of constant data this large is not ported")
+    e = left + np.arange(nbins + 1, dtype=np.float64) * w
+    e[-1] = right
+    return e
+
+
 def histcounts_edges(x, nbins: int) -> np.ndarray:
-    """the bin edges of ``histcounts(x, nbins)`` for finite data with more than one value: the
-    left edge is ``min(x)`` rounded down to a multiple of the raw width ``(max - min)/nbins``
-    truncated to one significant digit; the width is the smallest multiple of the largest power
-    of ten not above ``ul - ll`` that is at least ``ll``, with ``ll = (max - left)/nbins`` and
-    ``ul = (max - left)/(nbins - 1)``; the last edge is at least ``max(x)``."""
+    """the bin edges of ``histcounts(x, nbins)``, from the finite values of ``x`` (NaN and Inf
+    neither set the edges nor are counted). Data with more than one value: the left edge is
+    ``min(x)`` rounded down to a multiple of the raw width ``(max - min)/nbins`` truncated to one
+    significant digit; the width is the smallest multiple of the largest power of ten not above
+    ``ul - ll`` that is at least ``ll``, with ``ll = (max - left)/nbins`` and
+    ``ul = (max - left)/(nbins - 1)``; the last edge is at least ``max(x)``. One value: see
+    ``_constant_edges``. No finite value: the edges ``0, 1, ..., nbins`` (measured, task C02c)."""
     v = np.asarray(x, dtype=np.float64).ravel()
     nbins = int(nbins)
     if nbins < 1:
         raise ValueError("nbins must be a positive integer")
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return np.arange(nbins + 1, dtype=np.float64)
     xmin, xmax = float(v.min()), float(v.max())
-    if not (math.isfinite(xmin) and math.isfinite(xmax)) or xmax == xmin:
-        raise NotImplementedError("histcounts of constant or non-finite data is not ported")
+    if xmax == xmin:
+        return _constant_edges(xmin, nbins)
     raw = (xmax - xmin) / nbins
     p = _pow10(math.floor(math.log10(raw)))
     u = p * math.floor(raw / p)
@@ -52,10 +85,11 @@ def histcounts_edges(x, nbins: int) -> np.ndarray:
 
 
 def histcounts(x, nbins: int) -> tuple[np.ndarray, np.ndarray]:
-    """``[N, edges] = histcounts(x, nbins)``: counts (double) of the bins ``[e_k, e_k+1)``, the
-    last one closed, and the edges (``histcounts_edges``)"""
+    """``[N, edges] = histcounts(x, nbins)``: counts (double) of the finite values in the bins
+    ``[e_k, e_k+1)``, the last one closed, and the edges (``histcounts_edges``)"""
     v = np.asarray(x, dtype=np.float64).ravel()
     e = histcounts_edges(v, nbins)
+    v = v[np.isfinite(v)]
     idx = np.clip(np.searchsorted(e, v, side="right") - 1, 0, int(nbins) - 1)
     return np.bincount(idx, minlength=int(nbins)).astype(np.float64), e
 

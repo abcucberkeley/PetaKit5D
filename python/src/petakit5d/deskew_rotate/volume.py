@@ -575,13 +575,15 @@ def _as_input(vol: Any) -> np.ndarray:
 
 @register(
     "deskewFrame3D",
+    # third-party code: the port's own checks (accepts=), made from MATLAB's behaviour
+    # (tests/params/test_third_party_checks.py)
     Param("vol", None, "The raw volume (z, y, x).", convert="volume"),
     Param("angle", None, "Skew angle in degrees."),
     Param("dz", None, "Scan step."),
     Param("xyPixelSize", None, "Pixel size."),
-    Param("reverse", "@islogical", "Reverse scan direction."),
-    Param("Crop", "@islogical", "Crop half of the empty triangles in x."),
-    Param("Interp", _INTERP, "Interpolation: 'linear' or 'cubic'."),
+    Param("reverse", None, "Reverse scan direction.", accepts="logical"),
+    Param("Crop", None, "Crop half of the empty triangles in x.", accepts="logical"),
+    Param("Interp", None, "Interpolation: 'linear' or 'cubic'.", accepts="in(cubic,linear)"),
     task="D02",
     matlab_out=_volume_to_matlab,
 )
@@ -665,23 +667,39 @@ def _crop_out_size(
 
 @register(
     "rotateFrame3D",
+    # third-party code: the port's own checks (accepts=), made from MATLAB's behaviour
+    # (tests/params/test_third_party_checks.py)
     Param("vol", None, "The deskewed volume (z, y, x).", convert="volume"),
     Param("angle", None, "Skew angle in degrees."),
     Param("zxRatio", None, "Slice spacing in pixels (z anisotropy).", convert="same"),
-    Param("reverse", "@islogical", "Reverse scan direction."),
+    Param("reverse", None, "Reverse scan direction.", accepts="logical"),
     Param(
         "Crop",
-        "@islogical",
+        None,
         "Without outSize, a smaller output size from the zero regions of the data.",
-    ),
-    Param("resample", "@isnumeric", "Resample factor (z, y, x).", convert="resample_xyz"),
-    Param(
-        "ObjectiveScan", "@islogical", "Turns Crop off (otherwise changes nothing, as in MATLAB)."
+        accepts="logical",
     ),
     Param(
-        "outSize", "@isnumeric", "Output size (nz, ny, nx) before resampling.", convert="size_yxz"
+        "resample",
+        None,
+        "Resample factor (z, y, x).",
+        convert="resample_xyz",
+        accepts="numeric",
     ),
-    Param("Interp", _INTERP, "Interpolation: 'linear' or 'cubic'."),
+    Param(
+        "ObjectiveScan",
+        None,
+        "Turns Crop off (otherwise changes nothing, as in MATLAB).",
+        accepts="logical",
+    ),
+    Param(
+        "outSize",
+        None,
+        "Output size (nz, ny, nx) before resampling.",
+        convert="size_yxz",
+        accepts="numeric",
+    ),
+    Param("Interp", None, "Interpolation: 'linear' or 'cubic'.", accepts="in(cubic,linear)"),
     task="D02",
     matlab_out=_volume_to_matlab,
 )

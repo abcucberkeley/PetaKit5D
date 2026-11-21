@@ -49,12 +49,18 @@ Rules:
   (for an `arguments` block: the declaration, e.g. `"(1, :) {mustBeNumeric}"`; for a
   function without either: `None`). The third field is the meaning (from the MATLAB header).
 - **Third-party MATLAB code** (a file whose header names an author outside the lab or another
-  institution's copyright; `params/provenance.py` lists them) is registered by its interface
-  only: `None` as each validator and meanings of your own. The repository keeps its names,
-  argument kinds, order and defaults, which anyone can observe from outside, not its validator
-  texts: the stored extract withholds them (`"validator": null, "withheld": true`),
-  check_registry compares the rest, the skeleton gives `None` and no meanings, and the table
-  shows `(third-party: not shown)`. A function from `imageProcessing/`, `pointDetection/` or
+  institution's copyright; `params/provenance.py` lists them) is registered by its interface:
+  `None` as each validator and meanings of your own. The repository keeps its names, argument
+  kinds, order and defaults, which anyone can observe from outside, not its validator texts:
+  the stored extract withholds them (`"validator": null, "withheld": true`), check_registry
+  compares the rest (and refuses a validator text there), the skeleton gives `None` and no
+  meanings, and the table shows `(third-party: not shown)`. Where MATLAB validates a
+  parameter, the spec may give the port's own check instead, made from MATLAB's behaviour:
+  `accepts="logical"`, `"char | cell"`, `"empty | numeric & nonnegative-whole"`
+  (`spec.accepts_alternatives` lists the words). Its probe case in
+  `tests/params/test_third_party_checks.py` calls the MATLAB function with a battery of
+  designed values and checks that the MATLAB-name layer takes and refuses the same, with
+  inputParser's identifiers. A function from `imageProcessing/`, `pointDetection/` or
   `third_parties/` needs an entry in `provenance.py` (from the author lines of its header,
   nothing further) before the extract can hold it.
 - **The signature gives argument kinds and defaults.** Required arguments: positional without

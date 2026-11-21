@@ -231,6 +231,72 @@ def _declaration_alternatives(decl: str) -> list[frozenset[str]] | None:
     return [frozenset(a) for a in alts]
 
 
+# the port's own checks of third-party code (accepts=): its words and the predicates they mean
+_ACCEPTS_WORDS = {
+    "logical": "islogical",
+    "numeric": "isnumeric",
+    "char": "ischar",
+    "string": "port:string",
+    "cell": "iscell",
+    "struct": "isstruct",
+    "handle": "function_handle",
+    "empty": "isempty",
+    "scalar": "isscalar",
+    "vector": "port:vector",
+    "evenly-spaced": "port:evenly",
+    "nonnegative-whole": "port:whole",
+}
+_ACCEPTS_CALL = re.compile(r"(numel|in)\(([^()|&!]*)\)")
+
+
+def _accepts_word(w: str, text: str) -> str:
+    if w.startswith("!"):
+        return f"port:not:{_accepts_word(w[1:].strip(), text)}"
+    m = _ACCEPTS_CALL.fullmatch(w)
+    if m:
+        return f"port:{m.group(1)}:" + ",".join(a.strip() for a in m.group(2).split(","))
+    if w in _ACCEPTS_WORDS:
+        return _ACCEPTS_WORDS[w]
+    raise RegistryError(f"accepts={text!r}: unknown word {w!r}")
+
+
+def accepts_alternatives(text: str) -> list[frozenset[str]]:
+    """The port's own check of a parameter of third-party code as alternatives of predicates.
+
+    Alternatives are separated by ``|``, conditions that must all hold by ``&``, ``!word`` is
+    the opposite of a word. Words: the classes ``logical``, ``numeric``, ``char``, ``string``
+    (MATLAB's string class only: a Python str is char), ``cell``, ``struct``, ``handle``;
+    ``empty``, ``scalar``, ``vector`` (1-by-n or n-by-1, n >= 0), ``numel(n)``;
+    ``evenly-spaced`` (numbers, logicals or text with two or more elements whose differences
+    along the first dimension that is not 1 take one value; each NaN difference counts as a
+    value of its own); ``nonnegative-whole`` (numbers, each whole and >= 0, Inf too);
+    ``in(w1,...)`` (text equal to one of the words in any case, or a cell of such texts)."""
+    alts: list[frozenset[str]] = []
+    for alt in text.split("|"):
+        alts.append(frozenset(_accepts_word(word.strip(), text) for word in alt.split("&")))
+    return alts
+
+
+def accepts_mcc(alts: list[frozenset[str]]) -> str:
+    """The command-line conversion of a parameter with the port's own check: the generator's
+    rule (mcc_mode) on the classes the check takes (a word's opposite takes none)."""
+    preds = frozenset().union(*alts)
+    port = {p.split(":")[1] for p in preds if p.startswith("port:")}
+    return _mcc_of(
+        [
+            bool(preds & {"ischar"} or port & {"string", "in"}),
+            "isempty" in preds,
+            bool(
+                preds & {"isnumeric", "islogical", "isscalar"}
+                or port & {"vector", "numel", "evenly", "whole"}
+            ),
+            "iscell" in preds,
+            "isstruct" in preds,
+            "function_handle" in preds,
+        ]
+    )
+
+
 def mcc_mode(validator: str | None) -> str:
     """The conversion the mcc parser generator writes for a validator (``none`` if none).
 
@@ -241,14 +307,20 @@ def mcc_mode(validator: str | None) -> str:
     if not validator:
         return "none"
     v = validator
-    t = [
-        "ischar" in v or "isstring" in v,
-        "isempty" in v,
-        any(s in v for s in ("isnumeric", "islogical", "isvector", "isscalar")),
-        "iscell" in v,
-        "isstruct" in v,
-        "function_handle" in v,
-    ]
+    return _mcc_of(
+        [
+            "ischar" in v or "isstring" in v,
+            "isempty" in v,
+            any(s in v for s in ("isnumeric", "islogical", "isvector", "isscalar")),
+            "iscell" in v,
+            "isstruct" in v,
+            "function_handle" in v,
+        ]
+    )
+
+
+def _mcc_of(t: list[bool]) -> str:
+    """the generator's rule on its six tests: text, empty, numbers, cell, struct, handle"""
     if sum(t) == 0 or (sum(t) == 1 and t[0]) or (t[0] and any(t[1:3]) and not any(t[3:6])):
         return "none"
     if sum(t[1:6]) == 1:
@@ -312,7 +384,81 @@ def _is_struct(x: Any) -> bool:
     return any((c.__module__, c.__qualname__) in _STRUCT_CLASSES for c in type(x).__mro__)
 
 
+def _text_of(x: Any) -> str | None:
+    """a char row or a string scalar as str, else None"""
+    if isinstance(x, str):
+        return str(x)
+    if isinstance(x, _v.MArray) and x.mclass == "char" and len(x.shape) == 2 and x.shape[0] <= 1:
+        return "".join(x.data)
+    if _np_kind(x) == "U" and getattr(x, "ndim", 0) <= 1:
+        return "".join(x.reshape(-1).tolist())
+    return None
+
+
+def _numbers(x: Any) -> Any:
+    """the values of a numeric, logical or char array as a float NumPy array of MATLAB's size
+    (char as its codes), or None for other classes"""
+    import numpy as np
+
+    if isinstance(x, bool) or _is_num(x):
+        return np.full((1, 1), float(x))
+    if isinstance(x, str) and not isinstance(x, _v.MString):
+        return np.array([float(ord(c)) for c in x]).reshape((1, len(x)) if x else (0, 0))
+    if isinstance(x, _v.MArray):
+        vals = [float(ord(c)) for c in x.data] if x.mclass == "char" else [float(e) for e in x.data]
+        return np.array(vals).reshape(x.shape, order="F")
+    k = _np_kind(x)
+    if k is not None and k in "biuf":
+        a = np.asarray(x, dtype=float)
+        return a.reshape(_size(x)) if a.ndim < 2 else a
+    if isinstance(x, list | tuple) and _seq_all(x, lambda e: isinstance(e, bool) or _is_num(e)):
+        return np.array([float(e) for e in x]).reshape(1, len(x)) if x else np.zeros((0, 0))
+    return None
+
+
+def _port_pred(name: str, x: Any) -> bool:
+    """the predicates of the port's own checks (accepts_alternatives)"""
+    kind, _, arg = name[len("port:") :].partition(":")
+    if kind == "not":
+        return not _pred(arg, x)
+    if kind == "string":
+        return isinstance(x, _v.MString)
+    if kind == "vector":  # MATLAB's isvector: 1-by-n or n-by-1, n >= 0
+        sz = _size(x)
+        return len(sz) == 2 and (sz[0] == 1 or sz[1] == 1)
+    if kind == "numel":
+        return _numel(x) == int(arg)
+    if kind == "in":
+        words = {w.lower() for w in arg.split(",")}
+        t = _text_of(x)
+        if t is not None:
+            return t.lower() in words
+        items = list(x) if isinstance(x, _v.Cell | list | tuple) else None
+        return items is not None and all(
+            (e := _text_of(i)) is not None and e.lower() in words for i in items
+        )
+    a = None if isinstance(x, _v.MString) else _numbers(x)
+    if kind == "evenly":
+        import numpy as np
+
+        if a is None or a.size < 2:
+            return False
+        dim = next(i for i, n in enumerate(a.shape) if n != 1)
+        d = np.diff(a, axis=dim).ravel()
+        nan = np.isnan(d)
+        return int(nan.sum()) + len(set(d[~nan].tolist())) == 1
+    if kind == "whole":
+        import numpy as np
+
+        if a is None or not _pred("isnumeric", x):
+            return False
+        return bool(np.all((a == np.floor(a)) & (a >= 0)))
+    raise RegistryError(f"unknown predicate {name}")
+
+
 def _pred(name: str, x: Any) -> bool:
+    if name.startswith("port:"):
+        return _port_pred(name, x)
     k = _np_kind(x)
     mclass = _v.matlab_class(x) if isinstance(x, _v.MArray | _v.Cell | _v.MString) else None
     if name in ("ischar", "isstr"):
@@ -497,6 +643,9 @@ class Param(_Record):
         ``"range1"``, ``"dim"``, ``"flags_yxz"``, ``"axis_string"``, ``"data_order"``, ...;
         ``"same"``: checked, no conversion) or a ``(from_matlab, to_matlab)`` pair. None: the
         name does not suggest a conversion (check_registry asks for one where it does).
+    accepts: for third-party code, whose validator texts the repository does not keep, the
+        port's own check, made from MATLAB's behaviour (``accepts_alternatives``: words such as
+        ``"logical"``, ``"char | cell"``, ``"numeric & vector"``); validator is then None.
     """
 
     __slots__ = _PARAM_FIELDS = (
@@ -509,6 +658,7 @@ class Param(_Record):
         "python_only",
         "differs",
         "convert",
+        "accepts",
     )
     _fields = _PARAM_FIELDS
     _defaults = {
@@ -519,6 +669,7 @@ class Param(_Record):
         "python_only": False,
         "differs": None,
         "convert": None,
+        "accepts": None,
     }
     matlab: str
     validator: str | None
@@ -529,6 +680,7 @@ class Param(_Record):
     python_only: bool
     differs: str | None
     convert: Any
+    accepts: str | None
 
     def __setattr__(self, name: str, value: Any) -> None:
         raise AttributeError("Param is immutable (use .replace)")
@@ -542,7 +694,9 @@ class ParamSpec(_Record):
 
     kind: required | optional | parameter; default: the Python default (``_MISSING`` for
     required arguments, else in Python's form); alternatives: the validator's class checks
-    (validator_alternatives); conv: the conversion kind (``kinds.Kind``) or None.
+    (validator_alternatives), or those of the port's own check (accepts_alternatives); conv:
+    the conversion kind (``kinds.Kind``) or None; accepts: the port's own check (third-party
+    code), or None.
     """
 
     __slots__ = _SPEC_FIELDS = (
@@ -558,9 +712,10 @@ class ParamSpec(_Record):
         "differs",
         "alternatives",
         "conv",
+        "accepts",
     )
     _fields = _SPEC_FIELDS
-    _defaults = {"alternatives": None, "conv": None}
+    _defaults = {"alternatives": None, "conv": None, "accepts": None}
     matlab: str
     py: str
     kind: str
@@ -573,6 +728,7 @@ class ParamSpec(_Record):
     differs: str | None
     alternatives: list[frozenset[str]] | None
     conv: Any
+    accepts: str | None
 
     __hash__ = None  # type: ignore[assignment]
 
@@ -616,16 +772,21 @@ class ParamSpec(_Record):
         return format_literal(self.to_matlab(self.default), hint)
 
     def check(self, value: Any, fname: str) -> None:
-        """Raise MatlabArgumentError if ``value`` fails the MATLAB validator's class checks."""
+        """Raise MatlabArgumentError if ``value`` fails the MATLAB validator's class checks
+        (or the port's own check, for third-party code)."""
         alts = self.alternatives
         if alts is None:
             return
         for preds in alts:
             if all(_pred(p, value) for p in preds):
                 return
+        must = (
+            f"pass the port's check: {self.accepts}"
+            if self.accepts is not None
+            else f"satisfy the function: {_matlab_validator_display(self.validator)}"
+        )
         raise MatlabArgumentError(
-            f"The value of '{self.matlab}' is invalid. It must satisfy the function: "
-            f"{_matlab_validator_display(self.validator)}.",
+            f"The value of '{self.matlab}' is invalid. It must {must}.",
             "MATLAB:InputParser:ArgumentFailedValidation",
         )
 
@@ -780,6 +941,17 @@ class FunctionSpec:
             if key in seen:
                 raise RegistryError(f"{where}: {d.matlab!r} is declared twice")
             seen.add(key)
+            if d.accepts is None:
+                alts = validator_alternatives(d.validator)
+                mcc = d.mcc or mcc_mode(d.validator)
+            elif d.validator:
+                raise RegistryError(
+                    f"{where}: {d.matlab!r} has a validator text and the port's own check "
+                    "(accepts=): give one"
+                )
+            else:
+                alts = accepts_alternatives(d.accepts)
+                mcc = d.mcc or accepts_mcc(alts)
             out.append(
                 ParamSpec(
                     matlab=d.matlab,
@@ -789,11 +961,12 @@ class FunctionSpec:
                     doc=d.doc,
                     default=default,
                     matlab_default=d.matlab_default,
-                    mcc=d.mcc or mcc_mode(d.validator),
+                    mcc=mcc,
                     python_only=d.python_only,
                     differs=d.differs,
-                    alternatives=validator_alternatives(d.validator),
+                    alternatives=alts,
                     conv=_kind_of(d, where),
+                    accepts=d.accepts,
                 )
             )
         return out
@@ -1001,11 +1174,16 @@ class FunctionSpec:
                 )
             if not _passes(p, a):
                 # not this optional: a name followed by a value, or a struct of names,
-                # starts the name-value part; anything else fails the optional's validator
-                if isinstance(a, str) and len(rest) > 1 and len(self._matches(str(a))) == 1:
-                    break
-                if isinstance(a, Mapping) and all(
-                    any(q.matlab.lower() == str(k).lower() for q in params) for k in a
+                # starts the name-value part (with KeepUnmatched, also a name that matches no
+                # parameter, or a struct of any fields: what matches nothing is kept apart);
+                # anything else fails the optional's validator
+                if isinstance(a, str) and len(rest) > 1:
+                    matches = self._matches(str(a))
+                    if len(matches) == 1 or (self.keep_unmatched and not matches):
+                        break
+                if isinstance(a, Mapping) and (
+                    self.keep_unmatched
+                    or all(any(q.matlab.lower() == str(k).lower() for q in params) for k in a)
                 ):
                     break
                 p.check(a, self.matlab_name)

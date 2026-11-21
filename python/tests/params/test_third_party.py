@@ -30,6 +30,7 @@ THIRD_PARTY_FUNCTIONS = {
     "rotateFrame3D",  # the same
     "XR_loadConditionData3D",  # the header names an outside author (cmeAnalysis)
     "XR_runDetection3D",  # the same
+    "XR_runDetection3D_frame_parallel",  # the same
     "XR_runTrackProcessing3D",  # the same
     "XR_runTracking3D",  # the same
     "runLifetimeAnalysis3D",  # the same
@@ -110,6 +111,7 @@ def test_the_stored_extract_is_in_the_makers_form(extract_json):
         ("pointDetection/llsmtools/transforms/deskewFrame3D.m", True),
         ("pointDetection\\llsmtools\\transforms\\rotateFrame3D.m", True),
         ("pointDetection/XR_runDetection3D.m", True),
+        ("pointDetection/XR_runDetection3D_frame_parallel.m", True),
         ("pointDetection/runLifetimeAnalysis3D.m", True),
         ("pointDetection/rotateTracks3D.m", True),
         ("pointDetection/deskewData.m", True),
@@ -131,7 +133,7 @@ def test_whose_code_it_is(file, third):
 @pytest.mark.parametrize(
     "file",
     [
-        "pointDetection/XR_runDetection3D_frame_parallel.m",
+        "pointDetection/XR_new_fake_frame_parallel.m",
         "pointDetection/src/XR_new_fake.m",
         "third_parties/normxcorr3/normxcorr3.m",
         "third_parties/sim3D_old/x.m",
@@ -206,7 +208,9 @@ def _spec(validator: str | None, *, mode_kw: bool = False, overwrite: bool = Fal
 def test_check_spec_compares_the_interface_of_third_party_code():
     outside = interface_only(_fake("pointDetection/llsmtools/XR_fake.m"))
     assert check_spec(_spec(None), outside) == []
-    assert check_spec(_spec("@ischar"), outside) == []  # validators are not compared
+    # validators are not compared, and a validator text there is refused
+    problems = check_spec(_spec("@ischar"), outside)
+    assert len(problems) == 2 and all("instead of a validator" in p for p in problems), problems
     problems = check_spec(_spec(None, overwrite=True), outside)
     assert len(problems) == 1 and "default True, MATLAB has false" in problems[0], problems
     problems = check_spec(_spec(None, mode_kw=True), outside)
@@ -393,5 +397,11 @@ def test_the_table_shows_no_validator_of_third_party_code(extract):
             matlab = row.split("`")[1]
             if "Python only" in row:
                 continue
-            assert cell == (WITHHELD if matlab in withheld else ""), (name, matlab)
+            if matlab not in withheld:
+                assert cell == "", (name, matlab)
+            else:  # the marker, with the port's own check where the spec has one
+                assert cell == WITHHELD or cell.startswith(f"{WITHHELD} the port's: `"), (
+                    name,
+                    matlab,
+                )
     assert THIRD_PARTY_FUNCTIONS <= set(sections)
