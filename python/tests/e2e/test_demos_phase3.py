@@ -345,12 +345,16 @@ def _run_multiple(root):
 def _case_tree():
     """the files compared: not the examples' in-memory results (``saved/``), nor the empty
     folder ``<source>Analysis/`` that MATLAB's XR_runTrackProcessing3D makes beside the given
-    results folder (docs/parity/phase3.md); the Amira files print the fits' values (W15)"""
+    results folder (docs/parity/phase3.md); the Amira files print the fits' values (W15). On
+    Windows not the frame-parallel runner's per-frame files (``Detections/``) either: the
+    references are Linux runs, and MATLAB's XR_runDetTrack3d takes 'parfor' on a PC, whose
+    XR_runDetection3D writes none, as run_detection_tracking does"""
     from petakit5d.testing.compare import ignore
 
     cmp = _example("compare_phase3_trees")
+    per_frame = (r"/Detections(/|$)",) if os.name == "nt" else ()
     return cmp.tree_spec(
-        ignore=(r"^saved/", r"/ch1/Analysis$"),
+        ignore=(r"^saved/", r"/ch1/Analysis$", *per_frame),
         amira=ignore("W15 (approved): the Amira files print the fits' values (W11)"),
     )
 
@@ -445,7 +449,10 @@ def test_the_demos_run_on_the_cut_down_data(phase3, tmp_path, monkeypatch):
     for name in rest:
         rep = compare(read_values(str(a / name)), read_values(str(b / name)), path=name)
         assert rep.ok, rep.text(name)
-    assert len(list((b / "Detections").glob("Detection_F_*.mat"))) == N_FRAMES
+    # its per-frame files: none on Windows, where MATLAB's XR_runDetTrack3d takes 'parfor'
+    # (XR_runDetection3D) and so does run_detection_tracking
+    per_frame = 0 if os.name == "nt" else N_FRAMES
+    assert len(list((b / "Detections").glob("Detection_F_*.mat"))) == per_frame
     # every spot detected within 0.5 voxels (MATLAB's 1-based positions in the deskewed frame,
     # which the offset correction padded by channel 2's shift in x)
     fi = read_mat(str(a / "Detection3D.mat"))["frameInfo"]
