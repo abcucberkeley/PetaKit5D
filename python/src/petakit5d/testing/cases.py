@@ -775,7 +775,11 @@ class Case:
     for every output, or {output name or index: spec}. files: compare the files written
     (default: when the case uses a work folder or file inputs); tree: how. expect_error:
     MATLAB must raise (an identifier string: that one). py_error: exception classes Python
-    may raise when MATLAB raises. error_message: compare error messages too. helpers:
+    may raise when MATLAB raises. error_message: compare error messages too. error_text:
+    'record', or 'withheld' for MATLAB code whose message texts the repository does not keep
+    (third-party code): the manifest holds the identifiers of the error and the warnings, not
+    their messages, and the error is compared by its identifier only, an empty one too (the
+    Python exception's ``identifier`` must be MATLAB's). helpers:
     folders of MATLAB helper files (relative to python/) put on MATLAB's path. device: 'cpu',
     'gpu' or 'gpu:<model>'. marks: extra pytest marks. outputs: output names. out_roles: one
     out role per output (see ``out_to_matlab``): Python's results in MATLAB's form.
@@ -799,6 +803,7 @@ class Case:
     expect_error: bool | str = False
     py_error: type | tuple = Exception
     error_message: bool = False
+    error_text: str = "record"
     code: str | None = None
     helpers: Sequence[str] = ()
     device: str = "cpu"
@@ -813,6 +818,10 @@ class Case:
             raise ValueError(f"case id {self.id!r}: no spaces or slashes")
         if (self.matlab is None) == (self.code is None):
             raise ValueError(f"case {self.id}: give either matlab (a function name) or code")
+        if self.error_text not in ("record", "withheld"):
+            raise ValueError(f"case {self.id}: error_text is 'record' or 'withheld'")
+        if self.error_text == "withheld" and self.error_message:
+            raise ValueError(f"case {self.id}: a withheld error message cannot be compared")
         if self.outputs is not None and len(self.outputs) != self.nargout:
             raise ValueError(
                 f"case {self.id}: {len(self.outputs)} output names for nargout={self.nargout}"

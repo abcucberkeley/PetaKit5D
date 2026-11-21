@@ -5,7 +5,9 @@ name: Wheels
 #   - petakit5d for Linux x86-64 (manylinux_2_28, in the image pyproject.toml pins), macOS arm64
 #     and Windows x86-64, for CPython 3.11 and 3.12 (abi3: 3.12 and newer), with cibuildwheel from
 #     [tool.cibuildwheel] in python/pyproject.toml: each wheel repaired, audited (abi3audit) and
-#     tested by its test command, then checked by python/tools/check_wheel.py;
+#     tested by its test command, then checked by python/tools/check_wheel.py; Windows twice, with
+#     MSVC and with MinGW-w64's GCC (the toolchain of the cpp-zarr and cpp-tiff wheels; artifact
+#     petakit5d-Windows-X64-mingw), until one is chosen (python/docs/decisions/0011);
 #   - the source distribution (no cpp/fft/exact/), and a wheel built from it alone and tested;
 #   - the exact FFT add-on (python/cpp/fft/exact, GPL): one py3 wheel per platform, tested and
 #     checked the same way.
@@ -33,13 +35,18 @@ env:
 
 jobs:
   wheels:
-    name: petakit5d on ${{ matrix.os }}
+    name: petakit5d on ${{ matrix.os }}${{ matrix.toolchain && format(' ({0})', matrix.toolchain) || '' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
+        # the system's usual compiler; Windows also with MinGW-w64's GCC
+        toolchain: ['']
+        include:
+          - os: windows-2025
+            toolchain: mingw
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,11 +60,18 @@ jobs:
       - name: Install cibuildwheel
         run: python -m pip install "$CIBUILDWHEEL"
 
+      # MinGW-w64: MinGW-builds' GCC 12.2.0 (UCRT), pinned by SHA-256, first on PATH, with CC, CXX and
+      # CMAKE_GENERATOR=Ninja for cibuildwheel's builds; the wheels carry its libgomp-1.dll,
+      # libwinpthread-1.dll and libgcc_s_seh-1.dll next to the modules (python/cmake/Pk5dOpenMP.cmake)
+      - name: MinGW-w64's GCC (Windows, MinGW)
+        if: matrix.toolchain == 'mingw'
+        run: bash tools/get_mingw.sh "$RUNNER_TEMP/mingw"
+
       # Windows: delvewheel bundles the first copy of a DLL on PATH, so the C++ runtime of the
       # toolset that builds the modules goes first: the system's msvcp140.dll can be older than
       # the toolset, and a runtime older than the toolset is unsupported
       - name: The toolset's C++ runtime (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.toolchain != 'mingw'
         continue-on-error: true
         run: |
           vs=$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest \
@@ -80,7 +94,8 @@ jobs:
       - name: Build, repair, audit and test
         run: python -m cibuildwheel --output-dir wheelhouse .
 
-      # the runtimes delvewheel bundled, and their versions
+      # the runtimes delvewheel bundled (MSVC) or the build put next to the modules (MinGW-w64), with
+      # their versions and SHA-256 (MinGW-w64's: those of the cpp-zarr and cpp-tiff wheels' copies)
       - name: Bundled DLLs (Windows)
         if: runner.os == 'Windows' && !cancelled()
         continue-on-error: true
@@ -88,9 +103,10 @@ jobs:
           for w in wheelhouse/*.whl; do
             d="$RUNNER_TEMP/unzipped/$(basename "$w")"
             python -m zipfile -e "$w" "$d"
-            for f in "$d"/petakit5d.libs/*.dll; do
+            for f in "$d"/petakit5d.libs/*.dll "$d"/petakit5d/_ext/*.dll; do
+              [ -f "$f" ] || continue
               v=$(powershell -NoProfile -Command "(Get-Item '$(cygpath -w "$f")').VersionInfo.FileVersion")
-              echo "$(basename "$w"): $(basename "$f") $v"
+              echo "$(basename "$w"): ${f#"$d"/} $v $(sha256sum < "$f" | cut -c1-16)"
             done
           done
 
@@ -100,7 +116,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: petakit5d-${{ runner.os }}-${{ runner.arch }}
+          name: petakit5d-${{ runner.os }}-${{ runner.arch }}${{ matrix.toolchain && format('-{0}', matrix.toolchain) || '' }}
           path: python/wheelhouse/*.whl
           if-no-files-found: warn
 
@@ -146,13 +162,17 @@ jobs:
           if-no-files-found: warn
 
   addon:
-    name: petakit5d-fftw on ${{ matrix.os }}
+    name: petakit5d-fftw on ${{ matrix.os }}${{ matrix.toolchain && format(' ({0})', matrix.toolchain) || '' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
+        toolchain: ['']
+        include:
+          - os: windows-2025
+            toolchain: mingw
     # (a job's defaults replace the workflow's: the shell too)
     defaults:
       run:
@@ -189,6 +209,10 @@ jobs:
       - name: Install cibuildwheel
         run: python -m pip install "$CIBUILDWHEEL"
 
+      - name: MinGW-w64's GCC (Windows, MinGW)
+        if: matrix.toolchain == 'mingw'
+        run: bash ../../../tools/get_mingw.sh "$RUNNER_TEMP/mingw"
+
       - name: Build, repair and test
         run: python -m cibuildwheel --output-dir wheelhouse .
 
@@ -198,6 +222,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: petakit5d-fftw-${{ runner.os }}-${{ runner.arch }}
+          name: petakit5d-fftw-${{ runner.os }}-${{ runner.arch }}${{ matrix.toolchain && format('-{0}', matrix.toolchain) || '' }}
           path: python/cpp/fft/exact/wheelhouse/*.whl
           if-no-files-found: warn

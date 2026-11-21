@@ -146,6 +146,18 @@ foreach(_prec single double)
     else()
         target_compile_options(${_t} PRIVATE -ffp-contract=off -fno-fast-math -w)
     endif()
+    if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        # MinGW-w64 (cmake/Pk5dExtension.cmake has why): the DLLs named as MSVC names them, FFTW's
+        # API exported alone, FFTW's own aligned malloc (its advice for MinGW: neither memalign nor
+        # MSVC's _aligned_malloc path applies), libgcc linked in, Linux's instruction set and tuning,
+        # and unaligned vector moves for the AVX codelets (GCC can't align Windows' stack to 32 bytes)
+        set_target_properties(${_t} PROPERTIES PREFIX "")
+        target_compile_definitions(${_t} PRIVATE FFTW_DLL WITH_OUR_MALLOC)
+        target_link_options(${_t} PRIVATE -static-libgcc)
+        if(_pk5d_x86)
+            target_compile_options(${_t} PRIVATE -march=x86-64 -mtune=generic -Wa,-muse-unaligned-vector-move)
+        endif()
+    endif()
     # FFTW's assertions name their source files (__FILE__): its folder as fftw-<version>, so that
     # the libraries name no folder of the build machine
     if(MSVC)

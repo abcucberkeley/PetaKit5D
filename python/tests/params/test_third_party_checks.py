@@ -13,6 +13,14 @@ to Python's form. Values outside the batteries may still be taken otherwise.
 ``ResultsPath`` and ``Frames`` from ``data`` before it checks it, so a value that is not a
 struct fails there, outside inputParser, unless it is empty. Its battery holds structs and the
 empty values of each class, which reach the checks.
+
+``runLifetimeAnalysis3D``'s options are probed with one movie whose tracks are missing: its
+``data`` passes MATLAB's check (which takes the movies' frame rates, so the port's function
+checks ``data`` itself and its spec has no check of the port's), and each call that the parser
+takes fails reading the tracks. The helper counts any error other than inputParser's as taken,
+an error that a check raises itself too: the port's checks take what MATLAB's parser does not
+refuse with its identifiers (``Display``'s cells of other than one element, ``Binning``'s cells,
+structs, strings and handles).
 """
 
 from __future__ import annotations
@@ -112,6 +120,15 @@ PAIRS = {"default": [3.0, 3.0], "char2": "ab"}
 # text that names a parameter in another case or in part (the loader's first argument)
 COND_TEXT = {"folder": "cond_missing", "lower_MovieSelector": "movieselector",
              "upper_FrameRate": "FRAMERATE", "prefix_MovieSelector": "MovieSel"}  # fmt: skip
+# the lifetime analysis' text options: the default, other words, their case, string and cell
+ON_OFF = {"on": "on", "off": "off", "upper_off": "OFF", "string_off": mstring("off"),
+          "cell_off": mcell("off")}  # fmt: skip
+SCREEN = {"screen": "screen", "print": "print", "upper_print": "PRINT",
+          "string_print": mstring("print"), "cell_screen": mcell("screen")}  # fmt: skip
+TYPES = {"all": "all", "Ia": "Ia", "upper_all": "ALL", "string_all": mstring("all"),
+         "cell_all": mcell("all")}  # fmt: skip
+DENSITY = {"mean": "mean", "median": "median", "upper_mean": "MEAN",
+           "string_mean": mstring("mean"), "cell_mean": mcell("mean")}  # fmt: skip
 
 # the leading arguments of each function's calls
 VOL = np.arange(120, dtype=np.uint16).reshape(6, 5, 4)
@@ -120,6 +137,16 @@ ROTATE = [VOL, 32.45, 2.5]
 NO_MOVIES = MStruct((0, 0), ["source", "movieLength"], [])  # a condition without movies
 MOVIE = {"source": "movie_missing/", "movieLength": 2.0}
 COND = ["cond_missing"]
+# a movie whose tracks are missing: the lifetime analysis checks its frame rate, then fails
+# reading the tracks (after its inputParser)
+LIFETIME_MOVIE = [
+    _structs(
+        (1, 1),
+        ["source", "channels", "framerate", "movieLength"],
+        [{"source": "movie_missing/ch1/", "channels": mcell("movie_missing/ch1/",
+          "movie_missing/ch2/"), "framerate": 2.0, "movieLength": 60.0}],
+    )
+]  # fmt: skip
 DATA = {
     "no_movies": NO_MOVIES,
     "one_movie": _structs((1, 1), ["source", "movieLength"], [MOVIE]),
@@ -198,6 +225,30 @@ PROBED = [
     ("XR_loadConditionData3D", "ObjectiveScan", COND, "pair", {}),
     ("XR_loadConditionData3D", "Reversed", COND, "pair", {}),
     ("XR_loadConditionData3D", "FrameRate", COND, "pair", {}),
+    ("runLifetimeAnalysis3D", "Display", LIFETIME_MOVIE, "pair", ON_OFF),
+    ("runLifetimeAnalysis3D", "DisplayMode", LIFETIME_MOVIE, "pair", SCREEN),
+    ("runLifetimeAnalysis3D", "AnalysisPath", LIFETIME_MOVIE, "pair", {"default": "Analysis"}),
+    ("runLifetimeAnalysis3D", "ProcessedTracks", LIFETIME_MOVIE, "pair",
+     {"default": "ProcessedTracks.mat"}),
+    ("runLifetimeAnalysis3D", "LifetimeData", LIFETIME_MOVIE, "pair",
+     {"default": "lifetimeData.mat"}),
+    ("runLifetimeAnalysis3D", "Type", LIFETIME_MOVIE, "pair", TYPES),
+    ("runLifetimeAnalysis3D", "Cutoff_f", LIFETIME_MOVIE, "pair", {"default": 3.0, "five": 5.0}),
+    ("runLifetimeAnalysis3D", "Print", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "Overwrite", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "ShowThresholdRange", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "Rescale", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "RemoveOutliers", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "ExcludeVisitors", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "PoolDatasets", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "ShowStatistics", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "SelectIndex", LIFETIME_MOVIE, "pair",
+     {"cell_rows": mcell([1.0, 2.0])}),
+    ("runLifetimeAnalysis3D", "CorrectObservationBias", LIFETIME_MOVIE, "pair", {}),
+    ("runLifetimeAnalysis3D", "InitDensity", LIFETIME_MOVIE, "pair", DENSITY),
+    ("runLifetimeAnalysis3D", "MaskPath", LIFETIME_MOVIE, "pair",
+     {"default": "Detection/cellmask.tif"}),
+    ("runLifetimeAnalysis3D", "Binning", LIFETIME_MOVIE, "pair", {"default": 1.0}),
 ]  # fmt: skip
 
 
@@ -381,6 +432,12 @@ def _takes(accepts: str, value: object) -> bool:
         ("nonnegative-whole", -1.0, False),
         ("nonnegative-whole", math.nan, False),
         ("nonnegative-whole", True, False),
+        ("positive-whole", (1.0, 2.0, math.inf), True),
+        ("positive-whole", 0.0, False),
+        ("positive-whole", (1.0, 2.5), False),
+        ("positive-whole", -2.0, False),
+        ("positive-whole", True, False),
+        ("positive-whole", "a", False),
         ("in(cubic,linear)", "LINEAR", True),
         ("in(cubic,linear)", mv.MArray("char", (1, 6), list("linear")), True),
         ("evenly-spaced", mv.MArray("char", (1, 3), list("abc")), True),
@@ -424,6 +481,7 @@ def test_a_check_of_the_port_and_its_use():
     assert accepts_mcc(accepts_alternatives("numel(2)")) == "str2num"
     assert accepts_mcc(accepts_alternatives("char & !in(a,b)")) == "none"
     assert accepts_mcc(accepts_alternatives("empty | numeric & nonnegative-whole")) == "str2num"
+    assert accepts_mcc(accepts_alternatives("numeric & positive-whole")) == "str2num"
     assert accepts_alternatives("char & !in(a, b)") == [
         frozenset({"ischar", "port:not:port:in:a,b"})
     ]

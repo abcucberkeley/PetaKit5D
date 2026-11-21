@@ -65,7 +65,9 @@ next to the modules (`petakit5d/_ext/cuda/`) and compiled at run time
   searched when Python loads an extension). MinGW-w64, which the mex use, was not chosen:
   CPython and the binary packages are built with MSVC, nanobind and scikit-build-core don't
   support MinGW as a first-class target, and MinGW modules would need its C++ and OpenMP runtimes
-  linked statically or shipped.
+  linked statically or shipped. Record 0011 (2026-11-21) adds MinGW-w64's GCC as a second
+  Windows toolchain, with those runtimes, and measures it against MSVC; the choice between them
+  is the user's.
 
 **Run-time checks** (`petakit5d._ext.core`, tested in `tests/test_smoke.py` on every system):
 `build_info()` (compiler, flags, OpenMP and the shared runtime), `fma_contracted()` (a multiply-add whose result
