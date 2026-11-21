@@ -13,9 +13,8 @@ black-box probes).
    a slip the port fixes (``docs/parity/detection.md`` W2);
 3. ``correct_xz_offset_data`` when ``x_zoffset_correction``;
 4. detection: ``run_detection`` for ``parallel_method`` ``'parfor'`` (always on Windows),
-   ``run_detection_frame_parallel`` for ``'lock_distributed'``, none for any other text (the
-   frame-parallel stage is not ported yet: ``NotImplementedError``, naming ``'parfor'`` as the
-   way round);
+   ``run_detection_frame_parallel`` for ``'lock_distributed'`` (the default), none for any other
+   text;
 5. with ``track``, on the movies of more than one frame: ``run_tracking`` with
    ``track_settings(radius=tracking_radius, max_gap_length=tracking_gap_length)``,
    ``run_track_processing``, and ``rotate_tracks`` when ``rotate_tracks``, each movie with its

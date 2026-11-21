@@ -31,7 +31,7 @@ Modules:
 from petakit5d.detection.condition import load_condition_data
 from petakit5d.detection.offsets import correct_xz_offset_data
 from petakit5d.detection.processing import rotate_tracks, run_track_processing
-from petakit5d.detection.run import run_detection
+from petakit5d.detection.run import run_detection, run_detection_frame_parallel
 from petakit5d.detection.wrapper import deskew_data, run_detection_tracking
 
 __all__ = [
@@ -40,6 +40,7 @@ __all__ = [
     "load_condition_data",
     "rotate_tracks",
     "run_detection",
+    "run_detection_frame_parallel",
     "run_detection_tracking",
     "run_track_processing",
 ]
