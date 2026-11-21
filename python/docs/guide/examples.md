@@ -34,6 +34,16 @@ The phase 1 examples of the phase and 2-photon stitching and of the widefield an
 deconvolution have their demos' Phase 2 steps already: the phase flat field (with the `basic`
 extra) and the OTF mask figures (with the `figures` extra).
 
+The Phase 3 examples, in `python/examples/phase3/`, are the point-detection demos
+(`demos/demo_point_detection_3d_*.m`), one function per demo step:
+
+| Example | MATLAB demo | What it shows |
+|---|---|---|
+| `demo_point_detection_3d_by_step.py` | demo_point_detection_3d_by_step.m | the steps one by one on the first experiment: loading the condition, the PSF sigmas from the bead images, deskew, the channels' x and z offsets, detection, tracking, track processing and the tracks' rotation |
+| `demo_point_detection_3d_integrated.py` | demo_point_detection_3d_integrated.m | the same with the integrated function (`run_detection_tracking`, MATLAB's `XR_runDetTrack3d`) |
+| `demo_point_detection_3d_multiple_experiments.py` | demo_point_detection_3d_multiple_experiments.m | all experiments of the condition through the integrated function, then the lifetime analysis and the intensity cohorts |
+| `compare_phase3_trees.py` | | compares a Python run's outputs with a MATLAB run's, step by step |
+
 ## Running them
 
 1. Download the demo datasets with the MATLAB demos' downloaders (`demos/demo_*_downloader.m`)
@@ -67,12 +77,27 @@ python run_all_demos_for_the_paper.py                         # all nine with th
 python demo_useful_tools.py                                   # after phase 1's demo_useful_tools.py
 ```
 
+The Phase 3 examples take the point-detection demo dataset (one condition folder with three
+experiments of two channels and the two channels' bead images): point `PETAKIT5D_DEMO_DATA` at
+the folder that holds `PetaKit5D_point_detection_demo_dataset`, or at that folder itself, on a
+copy (the demos write their results next to the frames, in each experiment's `ch1/DS/`,
+`ch2/DS/` and `ch1/Analysis_update_3/`). The MATLAB demos load the data interactively; the
+examples give the answers the demos' comments name (channels `ch1` and `ch2`, markers `gfp`
+and `rfp`):
+
+```
+export PETAKIT5D_DEMO_DATA=/mnt/projects/point_detection_copy
+cd python/examples/phase3
+python demo_point_detection_3d_by_step.py
+python demo_point_detection_3d_multiple_experiments.py   # on another copy: the same folders
+```
+
 Other variables:
 
 | Variable | Effect |
 |---|---|
 | `PETAKIT5D_DEMO_TIMINGS` | a file the time of every step is appended to (one JSON object per line) |
-| `PETAKIT5D_DEMO_SAVE_DIR` | a folder the in-memory results are written to as tiff files |
+| `PETAKIT5D_DEMO_SAVE_DIR` | a folder the in-memory results are written to: as tiff files (phase 1), as MAT-files (Phase 3: the condition, the PSF sigmas, the lifetime results) |
 | `PETAKIT5D_FFT` | `exact` for MATLAB's bits with the FFTW add-on ([install.md](install.md)) |
 
 The generic-framework example writes an example cluster configuration with placeholder values
@@ -90,7 +115,9 @@ demo shows after its `return`, is the phase 2 example's `bioformats_conversion`,
 demo data has no such files). Figures are drawn only with the `figures` extra (the PSF analysis,
 whose results are figures, needs it), the phase flat field only with the `basic` extra.
 [parity/demos.md](../parity/demos.md) lists the steps left out per demo,
-[parity/phase2.md](../parity/phase2.md) the Phase 2 steps and what they leave out.
+[parity/phase2.md](../parity/phase2.md) the Phase 2 steps and what they leave out. The Phase 3
+examples run every step of the point-detection demos; of `plotIntensityCohorts` they give the
+numbers of its figure, not the figure ([parity/phase3.md](../parity/phase3.md)).
 
 ## How close they are to MATLAB
 
@@ -104,3 +131,6 @@ every output is MATLAB's bit for bit apart from the phase flat field (BaSiCPy in
 MATLAB's BaSiC, within its parity row N8). On the default backend the FFT spectra and FSC
 curves, made from that backend's decon results, are within an approved row (P14), the other
 outputs within their rows. The numbers are in [parity/phase2.md](../parity/phase2.md).
+The point-detection demos were compared step by step too (`compare_phase3_trees.py`), end to
+end and each step on MATLAB's results of the steps before it; the numbers, and the speed of
+each step against MATLAB's, are in [parity/phase3.md](../parity/phase3.md).
