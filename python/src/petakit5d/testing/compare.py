@@ -30,6 +30,7 @@ import math
 import os
 import re
 import struct
+import zlib
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -604,13 +605,15 @@ def to_mvalue(x: Any, like: MValue | None = None) -> MValue:
     Without ``like`` (arguments): None is [] (0x0 double); bool is logical; int and float are
     double; complex is complex double; str is a char row; numpy arrays and scalars keep their
     class (1-D arrays are rows); lists and tuples of numbers or of bools are double or logical
-    rows, other lists are cell rows; dicts, dataclasses and namespaces are 1x1 structs.
+    rows, other lists are cell rows; dicts, dataclasses and namespaces are 1x1 structs; an
+    ``io.matfile.StructArray`` is the struct array of its size and fields (empty ones too).
 
     With ``like`` (a MATLAB reference), Python results are read as that reference where Python
     has no counterpart: a 1-D array or list matches a row or a column, a Python int takes an
     integer class it fits, '' and an empty 1-D array match any empty size, a list of dicts is a
     struct array, a dict is a containers.Map, and a value compared with a MATLAB object is
-    compared with the object's value. Classes are never changed otherwise.
+    compared with the object's value; the elements of a list, dict or StructArray are read as
+    the reference's. Classes are never changed otherwise.
     """
     if isinstance(x, MValue):
         return x
@@ -662,6 +665,8 @@ def to_mvalue(x: Any, like: MValue | None = None) -> MValue:
         if isinstance(like, MMap):
             return _dict_to_map(x, like)
         return _dict_to_struct(x, like)
+    if _is_struct_array(x):
+        return _struct_array_to_mvalue(x, like)
     if dataclasses.is_dataclass(x) and not isinstance(x, type):
         return _dict_to_struct({f.name: getattr(x, f.name) for f in dataclasses.fields(x)}, like)
     if hasattr(x, "__dict__") and type(x).__name__ == "SimpleNamespace":
@@ -731,6 +736,28 @@ def _dict_to_struct(d: Mapping, like: MValue | None) -> MStruct:
             raise TypeError(f"struct field names must be str, got {k!r}")
         items[k] = to_mvalue(v, lel.get(k))
     return MStruct((1, 1), list(d.keys()), [items])
+
+
+def _is_struct_array(x: Any) -> bool:
+    from petakit5d.io.matfile import StructArray
+
+    return isinstance(x, StructArray)
+
+
+def _struct_array_to_mvalue(s: Any, like: MValue | None) -> MStruct:
+    """a StructArray (io.matfile) as MATLAB's struct array of its size; a 1-D size is a row, or
+    the reference's column"""
+    els = s.ravel()
+    lits = (
+        like.items
+        if isinstance(like, MStruct) and like.items is not None and len(like.items) == len(els)
+        else None
+    )
+    items = [
+        {k: to_mvalue(e[k], lits[i].get(k) if lits else None) for k in s.fields}
+        for i, e in enumerate(els)
+    ]
+    return MStruct(_size_like(tuple(s.shape), like), list(s.fields), items)
 
 
 def _dict_to_map(d: Mapping, like: MMap) -> MMap:
@@ -2147,31 +2174,162 @@ def read_mat(path: str | os.PathLike) -> MStruct:
         head = f.read(128)
     if b"MATLAB 7.3 MAT-file" in head or head[:8] == b"\x89HDF\r\n\x1a\n":
         return _read_mat73(path)
+    return _read_mat5(path)
+
+
+def _read_mat5(path) -> MStruct:
     from scipy.io import loadmat
 
     d = loadmat(
         path, squeeze_me=False, struct_as_record=True, chars_as_strings=False, mat_dtype=True
     )
     names = [k for k in d if not k.startswith("__")]
-    return MStruct((1, 1), names, [{k: _from_scipy(d[k]) for k in names}])
+    # SciPy reads a struct array without fields as an object array of None (an empty one as an
+    # empty cell), and an element written without data (those of cell(1, 3), MATLAB's []) as a
+    # 1x0 double: where a variable holds such values, the file's layout (_mat5_layout) decides
+    odd = [k for k in names if _ambiguous(d[k])]
+    nodes = _mat5_layout(path, odd) if odd else {}
+    return MStruct((1, 1), names, [{k: _from_scipy(d[k], nodes.get(k)) for k in names}])
 
 
-def _from_scipy(x: Any) -> MValue:
+def _ambiguous(x: Any) -> bool:
+    """whether a value SciPy read holds an object array that is empty or has an element None,
+    or a cell element or field value 1x0 double"""
+    if not isinstance(x, np.ndarray) or not (x.dtype.names or x.dtype.kind == "O"):
+        return False
+    if x.dtype.names:
+        els = [el[f] for el in x.reshape(-1) for f in x.dtype.names]
+    elif x.size == 0:
+        return True
+    else:
+        els = list(x.reshape(-1))
+    return any(
+        e is None
+        or (isinstance(e, np.ndarray) and e.dtype == np.float64 and e.shape == (1, 0))
+        or _ambiguous(e)
+        for e in els
+    )
+
+
+def _mat5_layout(path, names: Sequence[str]) -> dict[str, tuple | None]:
+    """the layout nodes (``_mat5_node``) of the named variables of a MAT 5 (v6, v7) file"""
+    with open(path, "rb") as f:
+        buf = memoryview(f.read())
+    if len(buf) < 128 or bytes(buf[126:128]) not in (b"IM", b"MI"):
+        raise ValueError(f"{os.fspath(path)}: not a MAT 5 file")
+    o = ">" if bytes(buf[126:128]) == b"MI" else "<"
+    want, out, pos = set(names), {}, 128
+    while pos + 8 <= len(buf):
+        t, n = struct.unpack_from(o + "II", buf, pos)
+        body = buf[pos + 8 : pos + 8 + n]
+        pos += 8 + n + (-n % 8 if t != 15 else 0)  # miCOMPRESSED data is not padded
+        if t == 15:
+            # one miMATRIX inside; only a cell (1) or struct (2) array is read further
+            head = zlib.decompressobj().decompress(body, 24)
+            if len(head) < 24 or struct.unpack_from(o + "I", head, 16)[0] & 0xFF not in (1, 2):
+                continue
+            body = memoryview(zlib.decompressobj().decompress(body))
+            t, n = struct.unpack_from(o + "II", body, 0)
+            body = body[8 : 8 + n]
+        if t == 14 and len(body):
+            name, node = _mat5_node(body, o)
+            if name in want:
+                out[name] = node
+    return out
+
+
+_NO_DATA = (0, (0, 0), 0, None)  # the node of a miMATRIX element of no bytes (MATLAB's [])
+
+
+def _mat5_node(b: memoryview, o: str) -> tuple[str, tuple | None]:
+    """the name and layout of a miMATRIX element's payload: (class, size, number of fields,
+    children's nodes: per element, per field) for a struct array without fields and for a cell
+    or struct array that holds one or an element of no bytes (``_NO_DATA``), else None (and
+    the name '' for anything but a cell or struct array)"""
+
+    def elem(pos: int) -> tuple[memoryview, int]:
+        t, n = struct.unpack_from(o + "II", b, pos)
+        if t >> 16:  # small data element: the byte count in the upper half of the type word
+            return b[pos + 4 : pos + 4 + (t >> 16)], pos + 8
+        return b[pos + 8 : pos + 8 + n], pos + 8 + n + (-n % 8)
+
+    fl, pos = elem(0)
+    mx = struct.unpack_from(o + "I", fl, 0)[0] & 0xFF
+    if mx not in (1, 2):
+        return "", None
+    dims, pos = elem(pos)
+    nm, pos = elem(pos)
+    name = bytes(nm).split(b"\x00", 1)[0].decode("latin-1")
+    size = msize(struct.unpack(f"{o}{len(dims) // 4}i", dims))
+    nf = 1
+    if mx == 2:
+        ln, pos = elem(pos)
+        ln = struct.unpack_from(o + "i", ln, 0)[0]
+        fn, pos = elem(pos)
+        nf = len(fn) // ln if ln > 0 else 0
+        if nf == 0:
+            return name, (2, size, 0, None)
+    kids = []
+    for _ in range(math.prod(size) * nf):
+        t, n = struct.unpack_from(o + "II", b, pos)
+        if t != 14:
+            raise ValueError(f"MAT-file: element type {t} in a cell or struct, not miMATRIX")
+        kids.append(_mat5_node(b[pos + 8 : pos + 8 + n], o)[1] if n else _NO_DATA)
+        pos += 8 + n + (-n % 8)
+    return name, ((mx, size, nf, kids) if any(k is not None for k in kids) else None)
+
+
+def _from_scipy(x: Any, node: tuple | None = None) -> MValue:
+    """a value as SciPy's loadmat read it; ``node`` (``_mat5_node``) is its layout in the file
+    where it is or holds a struct array without fields or an element of no bytes"""
     if _is_sparse(x):
         return _sparse_from_scipy(x)
     if isinstance(x, np.ndarray):
+        kids = None
+        if node is not None:
+            mx, size, nf, kids = node
+            if mx == 0:  # an element of no bytes: MATLAB loads it as []
+                if x.size or x.dtype.kind == "O":
+                    raise ValueError(
+                        f"MAT-file: SciPy's {x.dtype} array {x.shape} is not the file's element "
+                        "of no bytes"
+                    )
+                return MArray("double", np.zeros((0, 0)))
+            n = math.prod(size)
+            ok = x.size == n and (x.ndim < 2 or msize(x.shape) == size)
+            if mx == 1 or nf == 0:
+                ok = ok and x.dtype.kind == "O" and not x.dtype.names
+            else:
+                ok = ok and len(x.dtype.names or ()) == nf
+            if not ok or (nf == 0 and any(e is not None for e in x.reshape(-1))):
+                raise ValueError(
+                    f"MAT-file: SciPy's {x.dtype} array {x.shape} is not the file's "
+                    f"{'cell' if mx == 1 else 'struct'} {size_text(size)}"
+                )
+            if nf == 0:
+                return MStruct(size, [], [{} for _ in range(n)])
         if x.dtype.names:
             fields = list(x.dtype.names)
             els = x.reshape(-1, order="F")
+            nf = len(fields)
             return MStruct(
                 msize(x.shape) if x.ndim >= 2 else (1, x.size),
                 fields,
-                [{f: _from_scipy(el[f]) for f in fields} for el in els],
+                [
+                    {
+                        f: _from_scipy(el[f], None if kids is None else kids[i * nf + j])
+                        for j, f in enumerate(fields)
+                    }
+                    for i, el in enumerate(els)
+                ],
             )
         if x.dtype.kind == "O":
             return MCell(
                 msize(x.shape) if x.ndim >= 2 else (1, x.size),
-                [_from_scipy(e) for e in x.reshape(-1, order="F")],
+                [
+                    _from_scipy(e, None if kids is None else kids[i])
+                    for i, e in enumerate(x.reshape(-1, order="F"))
+                ],
             )
         if x.dtype.kind == "U":
             if x.ndim < 2:
@@ -2263,6 +2421,9 @@ def _h5_value(obj, f) -> MValue:
     data = obj[()]
     if obj.attrs.get("MATLAB_empty"):
         size = tuple(int(n) for n in np.asarray(data).reshape(-1))
+        if cls == "canonical empty":
+            # an element never assigned (those of cell(1, 3)): MATLAB loads it as []
+            return MArray("double", np.zeros((0, 0)))
         if cls == "cell":
             return MCell(size, [])
         if cls == "struct":
