@@ -10,7 +10,8 @@ The data: ``PETAKIT5D_DEMO_DATA`` (``_phase3``). The results are those of the st
 demo (``demo_point_detection_3d_by_step.py``), in the same folders, with the wrapper's
 defaults: the detection runs frame by frame (``ParallelMethod`` 'lock_distributed', the
 default: ``run_detection_frame_parallel``, which also keeps each frame's detections in
-``Analysis_update_3/Detections/``), and files that exist are kept (``Overwrite`` false).
+``Analysis_update_3/Detections/``; on Windows 'parfor', as MATLAB's on a PC: ``run_detection``,
+without them), and files that exist are kept (``Overwrite`` false).
 """
 
 from __future__ import annotations
