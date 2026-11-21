@@ -26,24 +26,28 @@ how much, and how the port keeps the results the same. The build flags are in
 
 | | Linux x86-64 | macOS ARM (Apple silicon) | Windows x86-64 |
 |---|---|---|---|
-| compiler | GCC (reference: 13) | Apple Clang | MSVC (Visual Studio 2022 or 2026) |
-| OpenMP | libgomp: the cpp-zarr wheel's, shared with cpp-zarr and cpp-tiff (`docs/decisions/0008-openmp-runtime.md`) | libomp: Homebrew's (`brew install libomp`), or another found through `OpenMP_ROOT` (a folder with `include/omp.h` and `lib/libomp.dylib`, such as conda-forge's llvm-openmp) | `/openmp:llvm`, runtime `libomp140.x86_64.dll` next to the modules |
-| no contraction | `-ffp-contract=off` | `-ffp-contract=off` | `/fp:precise` |
-| vector code | GCC vector extensions, AVX2 dispatch | Clang vector extensions (NEON) | the same operations lane by lane |
+| compiler | GCC (reference: 13) | Apple Clang | MSVC (Visual Studio 2022 or 2026), or MinGW-w64's GCC: MinGW-builds' 12.2.0, the toolchain of the cpp-zarr and cpp-tiff wheels ([decisions/0011](decisions/0011-windows-toolchain.md)) |
+| OpenMP | libgomp: the cpp-zarr wheel's, shared with cpp-zarr and cpp-tiff (`docs/decisions/0008-openmp-runtime.md`) | libomp: Homebrew's (`brew install libomp`), or another found through `OpenMP_ROOT` (a folder with `include/omp.h` and `lib/libomp.dylib`, such as conda-forge's llvm-openmp) | MSVC: `/openmp:llvm`, runtime `libomp140.x86_64.dll` next to the modules; MinGW-w64: the toolchain's `libgomp-1.dll` next to the modules, shared with cpp-zarr and cpp-tiff |
+| no contraction | `-ffp-contract=off` | `-ffp-contract=off` | `/fp:precise`; MinGW-w64: `-ffp-contract=off` |
+| vector code | GCC vector extensions, AVX2 dispatch | Clang vector extensions (NEON) | MSVC: the same operations lane by lane; MinGW-w64: GCC vector extensions, AVX2 dispatch |
 
 `petakit5d._ext.core.build_info()` names the compiler, the flags and the OpenMP runtime, and
 `fma_contracted()` checks at run time that no multiply-add was fused (tests/test_smoke.py).
 
-**Windows: MSVC, not clang-cl.** CPython, NumPy and SciPy are built with MSVC, and `pip install`
-from source uses it with a stock Visual Studio. Every kernel has a path for compilers without
-GCC's vector extensions and target attributes: the run-time instruction-set dispatch of the MIP
-and flat-field kernels runs the baseline loops, binary morphology and the 3 x 3 x 3 median
-filter do their compare-exchanges lane by lane, and pocketfft runs one line at a time. These
-are the same operations in the same order (selections, or element-wise IEEE operations), so
-the bits are the same; only the speed differs. clang-cl would take the vector paths too (it
-defines `__clang__`); it needs Visual Studio's Clang component, an LLVM OpenMP runtime to ship,
-and compiler-rt's builtins for `__builtin_cpu_supports`, and is left for the wheels (E07) if
-Windows speed matters.
+**Windows: MSVC or MinGW-w64's GCC.** CPython, NumPy and SciPy are built with MSVC, and `pip
+install` from source uses it with a stock Visual Studio. Every kernel has a path for compilers
+without GCC's vector extensions and target attributes: the run-time instruction-set dispatch of
+the MIP and flat-field kernels runs the baseline loops, binary morphology and the 3 x 3 x 3
+median filter do their compare-exchanges lane by lane, and pocketfft runs one line at a time.
+These are the same operations in the same order (selections, or element-wise IEEE operations),
+so the bits are the same; only the speed differs. MinGW-w64's GCC (`CC=gcc CXX=g++` and
+`CMAKE_GENERATOR=Ninja`; `tools/get_mingw.sh` fetches the toolchain of the cpp-zarr and cpp-tiff
+wheels) takes the vector paths and the dispatch, as on Linux, and shares one OpenMP runtime with
+those libraries; what it needs on Windows (the x87 unit's precision by thread, its C library's
+`fma` and `round`, thread_local objects, pocketfft's pool at exit) is in
+[decisions/0011](decisions/0011-windows-toolchain.md). clang-cl would take the vector paths too;
+it needs Visual Studio's Clang component, an LLVM OpenMP runtime to ship and compiler-rt's
+builtins for `__builtin_cpu_supports`.
 
 ## What differs by system, and what the port does about it
 
@@ -176,7 +180,7 @@ Windows speed matters.
 - **Task runners** (`jobs.single`'s pools) run on Linux only; elsewhere every single job runs
   its own task.
 - **OpenMP version.** MSVC's `/openmp:llvm` has OpenMP 3.1's features but reports `_OPENMP`
-  200203 (2.0).
+  200203 (2.0); MinGW-w64's GCC 12.2 reports 201511 (4.5).
 - **The C library's elementary functions** (exp, log, sin, pow, hypot) differ in the last bit
   between glibc versions, Apple's libm and the UCRT. Where MATLAB's bits matter the port uses
   its own fdlibm-based functions (`petakit5d.matlabcompat.elementary`), not libm or NumPy's
@@ -196,11 +200,15 @@ Windows speed matters.
   addition (the value in units of 2^-1074, exact, plus 2^52), which keeps subnormal operations
   out of the vector code (a vector multiplication with subnormal results takes microcode
   assists on Intel processors, about 40 times as long per value). The resize kernels' C++ pow
-  takes fdlibm's form (`std::ldexp` before). No other code of the port takes a result that can
-  be subnormal and inexact from `ldexp` or `scalbn`: `core.dtypes.eps` makes powers of two,
-  which are exact, `testing.synth`'s exp stays above 2^-1000, and fdlibm's exp and hypot
+  takes fdlibm's form (`std::ldexp` before). Other code of the port takes no result that can be
+  subnormal and inexact from `ldexp` or `scalbn` (`core.dtypes.eps` makes powers of two, which
+  are exact, `testing.synth`'s exp stays above 2^-1000, and fdlibm's exp and hypot
   (`matlabcompat.elementary`; the C++ hypot of decon and of single `abs`) multiply by a power of
-  two themselves. Tests:
+  two themselves), but for one: the detection fits' correctly rounded exp (C++
+  `detection/mexfit.hpp`) scales its subnormal results with `std::ldexp`, and the MSVC build on
+  Windows 10 gave 183 of the 6,350 values of the pinned case `detection.cr_exp` one unit low
+  (measured 2026-11-21). The MinGW-w64 build takes MinGW-w64's `ldexp` (the x87 unit's `fscale`,
+  rounded once), which rounds them, as does Windows Server 2025's C runtime. Tests:
   tests/matlabcompat/test_elementary.py (the scaling against exact rational arithmetic, and
   power, with its oracle cases, under an `ldexp` that truncates as Windows 10's does) and
   tests/matlabcompat/test_resize.py (the C++ pow's subnormal results).
@@ -231,6 +239,31 @@ b.npz` measure the difference.
 | Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 65 | the same bits |
 | macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | the same bits (before the filters' and the deskew kernels' NaN fix the 2 `specials.*_infinities` cases differed in NaN signs only); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
 | Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | the same bits (the CI, measured 2026-11-19: see "How Windows is tested"); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
+| Windows x86-64 (GitHub's windows-2025), MinGW-w64's GCC 12.2 and MSVC, Python 3.12 and 3.14 | 65 | the same bits with both toolchains (the CI of 2026-11-21: all 77 tests of test_kernel_hashes.py passed in each job) |
+| Windows x86-64 with MinGW-w64's GCC 12.2 (a Windows 10 22H2 machine, Xeon Gold 6442Y, AVX-512), Python 3.12 (abi3 wheel) and 3.11 | 65 | the same bits; of the 9 recorded cases, 6 give Linux's bits too (the table below); measured 2026-11-21 | |
+| Windows x86-64 with MSVC, the same machine and wheel workflow run | 65 | the same bits but `detection.cr_exp` (Windows 10's `ldexp`, see "What differs by system"); of the 9 recorded cases, 2 |
+
+On that Windows 10 machine, all 74 cases of `tests/platform/_kernel_cases.py` (pinned and
+recorded) against Linux's (Rocky 8, glibc 2.28), with both toolchains' wheels of one commit: 71 give
+Linux's bits with MinGW-w64, 66 with MSVC. The others (ulp: a unit in the last place of the
+output's largest value; relative: of the value itself):
+
+| Case | MinGW-w64 | MSVC |
+|---|---|---|
+| `fft.matlab_fft`, `fft.half_spectra`, `xcorr.ncc` | the same bits | the double outputs: 60 to 87% of their values, by at most 5 ulp |
+| `specials.fft_and_decon` | the same bits | two outputs: 2,246 and 2,382 NaNs of the other sign, and 2 values each by 1 or 2 units in their own last place |
+| `detection.cr_exp` (pinned) | the same bits | 183 of 6,350 values (subnormal), one unit low: Windows 10's `ldexp`, above |
+| `filters.edgetaper` | the double output: 13% of its values, 1 ulp | 32%, 1 ulp |
+| `detection.ad_stat` (the C library's `erfc` and `log`) | 3 of its 50 outputs, one value each, relative 2.1e-13 at most | 10 outputs, 17 values, 3.4e-13 |
+| `detection.fit_mex.ad` (`erf` and `log`) | 2 of its 8 outputs, 3 values, 5.9e-14 | 4 outputs, 42 values, 8.3e-13 |
+
+edgetaper's differences with MinGW-w64 come from NumPy, whose `np.fft` and complex `np.abs` it
+calls (NumPy's Windows wheels are MSVC builds); its half spectra, the port's, give Linux's bits.
+The MinGW-w64 build computes long double in 80 bits, as GCC does on Linux, so that pocketfft's
+twiddle factors start from Linux's angles (MSVC's long double is double, as on ARM), and
+MinGW-w64's x87 functions, run at 64 bits ([decisions/0011](decisions/0011-windows-toolchain.md)),
+agree with glibc's more often than the UCRT's (of 20,000 random arguments, exp: 18 differ from
+glibc's, the UCRT's 93; sin 45 and 485; cos 10 and 867; erfc 905 and 8,768).
 
 The cases whose digests are recorded, not pinned, and how much they differ (largest difference
 in ulps of the largest |value| of the output; FFT outputs in single precision included):
@@ -304,11 +337,16 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
 - **On GitHub's runners only:** windows-2025, Python 3.12 and 3.14, the port built from source
   with MSVC as `pip install` builds it (`.[test,figures,n5]`), and the whole CPU suite
   (`pytest -v --timeout=900`), on every push. The job gates since 2026-11-14 (after two green
-  runs in a row). No local Windows machine runs the port's tests routinely.
+  runs in a row). The same jobs with MinGW-w64's GCC (`tools/get_mingw.sh`; since 2026-11-21,
+  [decisions/0011](decisions/0011-windows-toolchain.md)) run the same suite, and 11 tests that
+  MSVC's skip: the instruction-set dispatch's (filters, resize, unmix), the NaN rules of the
+  filters' fused chains, and the one libgomp-1.dll with the I/O packages. No local Windows machine
+  runs the port's tests routinely.
 - **Windows 10** (one run of the suite on a Windows 10 22H2 machine, 2026-11-19, with the
   libraries' 1.8.0 wheels): the results of the runners but for two differences of that machine,
-  its C runtime's `ldexp` (above; the port no longer depends on it) and long paths, which were
-  off there (install guide, "Windows: long paths").
+  its C runtime's `ldexp` (above; with MSVC the detection fits' correctly rounded exp still
+  depends on it, not with MinGW-w64) and long paths, which were off there (install guide,
+  "Windows: long paths").
 - **What the CI shows** besides the tests: the build information (compiler, flags, OpenMP
   runtime), the CPU and NumPy's SIMD dispatch and OpenBLAS kernels, the OpenMP runtimes found,
   and the "Oracle key probe (Windows)" step (tests/platform/key_probe.py), which prints what

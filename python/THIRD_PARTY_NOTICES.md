@@ -167,12 +167,36 @@ SUCH LOSS OR DAMAGES.
 This product includes software developed by the University of Chicago, as Operator of Argonne
 National Laboratory.
 
-## The GCC runtime libraries (Linux)
+## The GCC runtime libraries
 
 The Linux modules link GCC's libstdc++ and libgcc statically, and the Linux wheels carry GCC's
 OpenMP runtime libgomp (`petakit5d/_ext/libgomp-e985bcbb.so.1.0.0`, the copy that the cpp-zarr
-wheel bundles: [decisions/0008](docs/decisions/0008-openmp-runtime.md)). These libraries are under
-the GNU General Public License, version 3, with the GCC Runtime Library Exception, version 3.1,
-which allows programs compiled with GCC and linked with them to be distributed under licenses of
-their own (https://www.gnu.org/licenses/gcc-exception-3.1.html). GCC's sources are at
-https://gcc.gnu.org.
+wheel bundles: [decisions/0008](docs/decisions/0008-openmp-runtime.md)). The Windows modules built
+with MinGW-w64's GCC link libstdc++ and libgcc statically too, and their wheels carry GCC's
+`libgomp-1.dll` and `libgcc_s_seh-1.dll` (`petakit5d/_ext/`, the files of the MinGW-builds GCC
+12.2.0 toolchain that the cpp-zarr and cpp-tiff wheels carry:
+[decisions/0011](docs/decisions/0011-windows-toolchain.md)). These libraries are under the GNU
+General Public License, version 3, with the GCC Runtime Library Exception, version 3.1, which
+allows programs compiled with GCC and linked with them to be distributed under licenses of their
+own (https://www.gnu.org/licenses/gcc-exception-3.1.html). The Windows wheels built with
+MinGW-w64 carry both texts as the toolchain ships them, copied from it by the build:
+`petakit5d/_ext/licenses/gcc/COPYING3` and `petakit5d/_ext/licenses/gcc/COPYING.RUNTIME`. GCC's
+sources are at https://gcc.gnu.org.
+
+## MinGW-w64's runtime and winpthreads (Windows, built with MinGW-w64)
+
+The Windows modules built with MinGW-w64's GCC contain MinGW-w64's runtime: its start-up code and,
+linked statically, functions of its C library (libmingwex: among them the math functions that
+`cpp/common/mingw_libm.c` wraps). Their wheels carry MinGW-w64's POSIX threads library winpthreads
+(`petakit5d/_ext/libwinpthread-1.dll`), which GCC's libgomp and libstdc++ use there. Their
+licenses: the mingw-w64 project's BSD-style license for the runtime, with the notices of its parts
+under other permissive licenses, which binary distributions must include; MIT for winpthreads,
+with the BSD notice of the parts it derives from. The wheels carry the notices as the toolchain
+ships them, copied from it by the build (the texts cpp-zarr's repository ships for its wheels):
+`petakit5d/_ext/licenses/mingw-w64/COPYING.MinGW-w64-runtime.txt` and
+`petakit5d/_ext/licenses/winpthreads/COPYING`. Built with MinGW-builds' GCC 12.2.0 (the toolchain
+of `tools/get_mingw.sh`), the build checks the four files' SHA-256 against that toolchain's
+(`cmake/Pk5dExtension.cmake`), and the release checks find them in the wheels
+(`tools/check_wheel.py`). The exact add-on built with MinGW-w64 (`petakit5d_fftw`, libgcc and the
+runtime linked in) carries the GCC and runtime notices in `petakit5d_fftw/licenses/`. MinGW-w64's
+sources are at https://www.mingw-w64.org.
