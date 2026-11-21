@@ -45,6 +45,7 @@
   "resize.imresize": "262b9f4b7ed70c9278d8",
   "signal.findpeaks": "3652aec4581a1154b9de",
   "signal.histcounts": "f10528519aa82be6cd9b",
+  "signal.histcounts_constant": "78cd3362540e9b87164f",
   "signal.medfilt1": "672673698bce3147dec6",
   "specials.blending": "1da6344a69ea58227805",
   "specials.conv_overlap": "7ff3bc9adfa0b9db82d6",

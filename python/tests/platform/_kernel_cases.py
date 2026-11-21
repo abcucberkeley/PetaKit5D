@@ -1614,6 +1614,31 @@ def _():
     return out + [Sg.histcounts(np.array([3.0, 7.5]), 3)]
 
 
+@case("signal.histcounts_constant")
+def _():
+    """histcounts of data with one finite value and of data with none (the bad-point filter's
+    histograms of few residual sigmas), on values and bin counts task C02c's probes measured in
+    MATLAB: one value alone and repeated, negative, zero and -0, tiny, on and off the multiples
+    of 0.25 and 0.5 (the limits v -/+ 0.5 to multiples of 0.5, a tie toward v); NaN and the
+    infinities beside it (not counted); no finite value (the edges 0 to nbins), empty"""
+    from petakit5d.matlabcompat import signal as Sg
+
+    out = []
+    for v in (5.0, 2.814, -3.7, 0.0, -0.0, 1e-300, 0.25, 6.36, 12.5, 123456.789):
+        out += [Sg.histcounts(np.array([v]), n) for n in (1, 2, 3, 4, 17, 60)]
+    for v in (0.75, 2.625, -1.25, 0.125):
+        out += [Sg.histcounts(np.array([v]), n) for n in (1, 2, 3, 7, 13, 60)]
+    out += [Sg.histcounts(np.array([2.814, 2.814]), n) for n in (3, 54)]
+    out.append(Sg.histcounts(np.array([3.0, 3.0, 3.0, 3.0]), 61))
+    out += [Sg.histcounts(np.array([0.5, 0.5, NAN]), n) for n in (4, 60)]
+    out += [Sg.histcounts(np.array([np.inf, 2.25, NAN, 2.25]), n) for n in (7, 13)]
+    out.append(Sg.histcounts(np.array([2.0, 2.0, np.inf]), 17))
+    for v in ([NAN, NAN], [np.inf, -np.inf], [NAN, np.inf], []):
+        out += [Sg.histcounts(np.array(v, dtype=np.float64), n) for n in (1, 4, 60)]
+    out.append(Sg.histcounts(np.array([NAN, 1.0, 2.0, np.inf, -np.inf, 3.5]), 13))
+    return out + [Sg.histcounts_edges(np.array([1.0, NAN, 1.0]), 60)]
+
+
 @case("signal.findpeaks")
 def _():
     """findpeaks as the bad-point filter calls it (histogram counts, prominence 5) and without a

@@ -4,21 +4,24 @@ residuals' sigma histogram (coarsened while ragged) gives a background peak and 
 it and the next peak; points with too few neighbours and a sigma below the valley, the residual
 threshold or the noise threshold are removed. Measured: the keep mask of MATLAB on the demo's
 120 frames with the background correction (both channels; channel 1 frame 28 takes the second
-valley search, tasks C02 and C02c), on 15 of 15 traced calls and on 249 of 285 replayed
-variants. Inputs that matter: the positions (through the neighbour counts), sigma_r, ``thr`` and
-``bgInfo(3:4)`` (noise, camera threshold).
+valley search, tasks C02 and C02c), on 15 of 15 traced calls, on 248 of 285 replayed
+variants and on 118 designed calls of few points (task C02c). Inputs that matter: the positions
+(through the neighbour counts), sigma_r, ``thr`` and ``bgInfo(3:4)`` (noise, camera threshold).
 
-Stages (as measured): 1. ``x`` = sigma_r below its 99th percentile, ``max(60, Freedman-Diaconis,
-ceil(10 (p99 - min)/std))`` bins, peaks of prominence 5; 2. ``nb <- ceil(0.9 nb)`` while the
-histogram is ragged; 3. the background bin search with optional smoothing; 4. the path (C: thr
-only, A: the valley or thr, B: the valley and 0.8 of it), with the second valley search
-(``second_valley``: B, or A262, A with min(noise, 1.5 camera thresholds)) on the A paths;
-5. neighbour counts (radius mean + 3 std of the distance to the second-nearest other point);
-6. the removal rules.
+Stages (as measured): 0. fewer than three points: one true (MATLAB's result, with which the
+detector keeps them); ``prctile(sr, 95) <= 2 prctile(sr, 5)``: straight to stage 5 and the
+removal of the path A with thr (``short_path``); fewer than 10 sigmas below their 99th
+percentile: every point kept (task C02c); 1. ``x`` = sigma_r below its 99th percentile,
+``max(60, Freedman-Diaconis, ceil(10 (p99 - min)/std))`` bins (NaN left out), peaks of
+prominence 5; 2. ``nb <- ceil(0.9 nb)`` while the histogram is ragged; 3. the background bin
+search with optional smoothing; 4. the path (C: thr only, A: the valley or thr, B: the valley and
+0.8 of it), with the second valley search (``second_valley``: B, or A262, A with min(noise, 1.5
+camera thresholds)) on the A paths; 5. neighbour counts (radius mean + 3 std of the distance to
+the second-nearest other point); 6. the removal rules.
 
 Open (docs/parity/detection.md, the bad-point filter): the smoothing choice of line 104 (conv or
 medfilt1), wrong on 3 of the demo's 60 frames without the background correction, and the B
-path's threshold on one more.
+path's threshold on one more; line 160's bound in the cases listed there.
 """
 
 from __future__ import annotations
@@ -122,8 +125,13 @@ def stage12(sr):
     p99 = M.prctile(sr, 99)
     x = sr[sr < p99]
     iqr = M.prctile(sr, 75) - M.prctile(sr, 25)
-    rng = p99 - sr.min()
-    nb0 = max(60, math.ceil(rng / (2 * iqr * sr.size ** (-1 / 3))), math.ceil(10 * rng / M.std(sr)))
+    rng = p99 - float(np.nanmin(sr))
+    # MATLAB's max and min leave NaN out (a NaN sigma makes std NaN; prctile leaves it out)
+    terms = [rng / (2 * iqr * sr.size ** (-1 / 3)), 10 * rng / M.std(sr)]
+    terms = [t for t in terms if not math.isnan(t)]
+    if any(math.isinf(t) for t in terms):
+        raise NotImplementedError("the bad-point filter's bin count is infinite (no spread)")
+    nb0 = max([60] + [math.ceil(t) for t in terms])
     seq = []
     nb = nb0
     cnt, e = M.histcounts(x, nb)
@@ -233,14 +241,31 @@ def valley(cnt, e, lst):
     return bp, kv, nxt, e[0] + (kv - 0.5) * w
 
 
+def early_c_bound(noise, cam):
+    """line 160's bound on the background peak's bin centre (C at or above it; task C02c:
+    frame 28's histogram with its edges moved, 29 groups of camera threshold, noise and thr, and
+    5475 recorded calls): 2 x max(camera threshold, noise) while the noise is at most 2 camera
+    thresholds (to 0.02 at noises 2.4 to 3.5 and cameras 1.5 to 6), 2.5 x noise above that (line
+    17's case: between 8.02 and 9.02 at noise 3.5, camera 1.5; 13.02 and 15.02 at 6, 2.5; above
+    7.5 at 3.01, 1.5); with a camera threshold of 1.25 or less and the noise above it, no C (A up
+    to the largest centres designed: 5.6 at camera 1.25 and noise 2.2, 33 at camera 1; where
+    between 1.25 and 1.5 that ends is open); thr does not enter (2, 3 and 4 alike)"""
+    if cam < 1.5 and noise > cam:
+        return math.inf
+    if noise > 2 * cam:
+        return 2.5 * noise
+    return 2 * max(cam, noise)
+
+
 def decide(st, thr, noise, cam):
     """the removal path ('A317': A with T_c, 'A318': A with thr, 'B', 'C', and the second
     search's 'A262': A with its threshold) and its threshold T_c. Measured on synthetic
     histograms (probes e8/e9) and checked on the recorded calls:
       C when the list has one entry, or the background peak is low (cbp <= 0.34 x prctile 85 of
-      the counts: the exact form is open), or its bin centre is at or above 2 x camera threshold,
-      or the valley is shallow (ckv >= 0.6 cbp, line 196); (a close, taller next peak also gives
-      C, lines 178-179: not implemented, no real-run frame has it);
+      the counts: the exact form is open), or its bin centre is at or above line 160's bound
+      (``early_c_bound``: 2 x max(camera threshold, noise) for the demo's), or the valley is
+      shallow (ckv >= 0.6 cbp, line 196); (a close, taller next peak also gives C, lines
+      178-179: not implemented, no real-run frame has it);
       B when the valley is below 0.15 of the background peak and T_c < 2 x camera threshold
       (camera threshold not 5: two designed histograms with 5 took A with T_c, task C02c);
       otherwise (the A paths) the second valley search's decision when it makes one
@@ -270,7 +295,7 @@ def decide(st, thr, noise, cam):
     }
     if len(lst) > 2 and not cbp > 0.34 * p85:
         return "C", tc, info
-    if not sig < 2 * cam:
+    if not sig < early_c_bound(noise, cam):
         return "C", tc, info
     if ckv >= 0.6 * cbp:
         return "C", tc, info
@@ -380,10 +405,10 @@ def noise_threshold(noise, cam):
     return max(0.9 * noise, min(noise, cam))
 
 
-def removal(sr, cnt, thr, noise, cam, path, tc, U=8):
-    """the keep mask of the removal stage. With noise > 2 x camera threshold (line 17;
-    PROVISIONAL, not in the real-run data): A with thr removes counts 2..10 below thr and neither
-    A with thr nor C applies the noise rule"""
+def removal(sr, cnt, thr, noise, cam, path, tc, U=8, short=False):
+    """the keep mask of the removal stage (``short``: the short path's A with thr). With noise >
+    2 x camera threshold (line 17; PROVISIONAL, not in the real-run data): A with thr removes
+    counts 2..10 below thr and neither A with thr nor C applies the noise rule"""
     sr = np.asarray(sr, float).ravel()
     tn = noise_threshold(noise, cam)
     flag17 = cam < 5 and noise > 2 * cam
@@ -393,6 +418,13 @@ def removal(sr, cnt, thr, noise, cam, path, tc, U=8):
     elif path == "B":
         rem |= (cnt >= 2) & (cnt <= 4) & (sr < tc)
         rem |= (cnt >= 5) & (cnt <= U) & (sr < 0.8 * tc)
+    elif short and not flag17:
+        # the short path's A with thr: 2 neighbours below thr, 3 below min(thr, cam, 2 noise)
+        # (task C02c, probes sp1, fu9 and fu10: three neighbours kept below thr 4 with cameras 3
+        # to 5.5 and noise 1 or 2.6, removed below thr 3 with camera 3 and noises 1.5 to 4; the
+        # long path removes them below thr, camera 2 included: C02's recorded variants)
+        rem |= (cnt == 2) & (sr < thr)
+        rem |= (cnt == 3) & (sr < min(thr, cam, 2 * noise))
     else:
         t1 = tc if path in ("A317", "A262") else thr
         rem |= (cnt >= 2) & (cnt <= (10 if flag17 and path == "A318" else 3)) & (sr < t1)
@@ -428,21 +460,64 @@ def median_bound(sr, cnt, path, tc):
     return min(M.median(cnt[cand]), 10)
 
 
+def short_path(sr) -> bool:
+    """lines 34-39: the histogram analysis (lines 40-279) is skipped and the points are removed
+    as on the path A with thr (lines 273 and 318) when ``prctile(sr, 95) <= 2 prctile(sr, 5)``
+    (task C02c, probes fu3, fu3b and fu3c: taken on 78 calls with ratios up to 2 itself, not on
+    47 from 2.0000000003, whatever the spread)"""
+    p95, p5 = M.prctile(sr, 95), M.prctile(sr, 5)
+    return p95 <= 2 * p5
+
+
+# the long path returns every point when fewer sigmas than this lie below their 99th percentile
+FEW_BELOW_P99 = 10
+
+# the information of a call that returns before the analysis
+_NO_ANALYSIS = {
+    "tc": None,
+    "U": None,
+    "nb0": None,
+    "nsteps": 0,
+    "nb": None,
+    "stage3": None,
+    "decide": {},
+    "counts": None,
+}
+
+
 def filter_bad_points_info(pos, sigma_r, thr, bginfo, vol=None, A=None, c=None, *, oracle=None):
     sr = np.asarray(sigma_r, float).ravel()
     thr = float(np.asarray(thr).ravel()[0])
     bg = np.asarray(bginfo, float).ravel()
     noise, cam = float(bg[2]), float(bg[3])
     oracle = oracle or {}
-    x, nb0, seq = stage12(sr)
-    nb, cnt, e, locs = seq[-1]
-    st = stage3(sr, nb, cnt, e, locs, smooth=oracle.get("smooth"), conv=oracle.get("conv"))
-    path, tc, dinfo = decide(st, thr, noise, cam)
+    if sr.size < 3:
+        # MATLAB returns a scalar true for fewer than three points (task C02c, probes fu1 and
+        # fu3: one and two points, NaN among them; no MathWorks call is made), with which the
+        # detector keeps them all
+        return np.ones(1, dtype=bool), {**_NO_ANALYSIS, "path": "few"}
+    short = short_path(sr)
+    if short:
+        nb0, seq, st, dinfo = None, [], None, {}
+        nb, path, tc = None, "A318", None
+    else:
+        x = sr[sr < M.prctile(sr, 99)]
+        if x.size < FEW_BELOW_P99:
+            # lines 58-60 -> 113-115: every point kept, no neighbour count made (task C02c,
+            # probes fu3b and fu3c: 5 to 10 points with ratios from 2 kept all, 11 went on)
+            return np.ones(sr.size, dtype=bool), {**_NO_ANALYSIS, "path": "early"}
+        x, nb0, seq = stage12(sr)
+        nb, cnt, e, locs = seq[-1]
+        st = stage3(sr, nb, cnt, e, locs, smooth=oracle.get("smooth"), conv=oracle.get("conv"))
+        path, tc, dinfo = decide(st, thr, noise, cam)
     if "path" in oracle:
         path = oracle["path"]
-    _, ncnt, _ = neighbour_counts(pos)
+    ncnt = oracle["counts"] if "counts" in oracle else neighbour_counts(pos)[1]
     U = oracle.get("U", median_bound(sr, ncnt, path, tc))
-    keep = removal(sr, ncnt, thr, noise, cam, path, tc, U=U)
+    # the short path counts a NaN sigma below every threshold (lines 294-310: removed with 1 to
+    # U neighbours, kept with more; probe fu3c); the long path never removes it by its sigma
+    keep = removal(np.where(np.isnan(sr), -np.inf, sr) if short else sr, ncnt, thr, noise, cam,
+                   path, tc, U=U, short=short)  # fmt: skip
     return keep, {
         "nb0": nb0,
         "nsteps": len(seq),
