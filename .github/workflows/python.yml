@@ -23,7 +23,7 @@ defaults:
 
 jobs:
   test:
-    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}${{ matrix.toolchain && format(' ({0})', matrix.toolchain) || '' }}
     runs-on: ${{ matrix.os }}
     # Linux and Windows are the gate (Windows since its first two fully green runs). macOS reports
     # without failing the workflow until a cpp-zarr wheel whose write_zarr doesn't crash on macOS arm64
@@ -44,6 +44,12 @@ jobs:
         # environment (Linux), and the newest supported one with the newest packages
         os: [ubuntu-24.04, macos-15, windows-2025]
         python: ['3.12', '3.14']
+        # Windows: the source build with MSVC (pip's default there) and with MinGW-w64's GCC
+        # (docs/decisions/0011-windows-toolchain.md)
+        toolchain: ['']
+        include:
+          - {os: windows-2025, python: '3.12', toolchain: mingw}
+          - {os: windows-2025, python: '3.14', toolchain: mingw}
 
     steps:
       - uses: actions/checkout@v7
@@ -55,6 +61,12 @@ jobs:
       # Apple Clang has no OpenMP runtime of its own
       - if: runner.os == 'macOS'
         run: brew install libomp
+
+      # MinGW-builds' GCC 12.2.0 (UCRT), pinned by SHA-256, first on PATH, with CC, CXX and
+      # CMAKE_GENERATOR=Ninja for pip's build
+      - name: MinGW-w64's GCC (Windows, MinGW)
+        if: matrix.toolchain == 'mingw'
+        run: bash tools/get_mingw.sh "$RUNNER_TEMP/mingw"
 
       - name: Install (pinned environment)
         if: runner.os == 'Linux' && matrix.python == '3.12'

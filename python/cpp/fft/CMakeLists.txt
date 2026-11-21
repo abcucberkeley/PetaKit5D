@@ -5,7 +5,7 @@
 add_library(pk5d_fft_driver STATIC backend.cpp driver.cpp pocketfft_api.cpp halfspec.cpp)
 target_include_directories(pk5d_fft_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pocketfft)
-target_link_libraries(pk5d_fft_driver PRIVATE pk5d_flags pk5d_openmp)
+target_link_libraries(pk5d_fft_driver PRIVATE pk5d_flags pk5d_openmp pk5d_common)
 set_target_properties(pk5d_fft_driver PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_VISIBILITY_PRESET hidden)
 find_package(Threads REQUIRED)
 target_link_libraries(pk5d_fft_driver PUBLIC Threads::Threads)

@@ -30,6 +30,7 @@ a repository of its own. What waits for a decision of the user is marked **(user
 | Linux x86-64 | `manylinux_2_28_x86_64` (auditwheel also tags it `manylinux_2_24`) | GCC 14 of the image `quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1`, the image of the cpp-zarr and cpp-tiff wheels | auditwheel | the cpp-zarr wheel's libgomp, carried in the wheel (below) |
 | macOS arm64 | `macosx_13_0_arm64` | Apple Clang | delocate | LLVM's libomp, built for macOS 13.0 from LLVM's sources and copied in by delocate |
 | Windows x86-64 | `win_amd64` | MSVC (on the windows-2025 runners Visual Studio 2026's, toolset 14.51), `/openmp:llvm` | delvewheel `--no-diagnostic` | `libomp140.x86_64.dll`, which delvewheel copies in with the C++ runtime |
+| Windows x86-64, MinGW-w64 (the choice is the user's: [decisions/0011](decisions/0011-windows-toolchain.md)) | `win_amd64` | MinGW-builds' GCC 12.2.0 (UCRT), the toolchain of the cpp-zarr and cpp-tiff wheels (`tools/get_mingw.sh`), the Ninja generator | delvewheel `--no-diagnostic` (nothing to copy in) | the toolchain's `libgomp-1.dll`, with `libwinpthread-1.dll` and `libgcc_s_seh-1.dll`, which the build puts next to the modules under their own names: one runtime with cpp-zarr and cpp-tiff |
 
 For each platform two wheels: **CPython 3.11** (`cp311-cp311`) and **CPython 3.12 and newer**
 (`cp312-abi3`), with nanobind's stable ABI. The modules use no Python API outside the limited API
@@ -71,6 +72,12 @@ against an installed wheel in CI (below).
   toolset's own redistributable one first, any program's copy that comes earlier (a JDK's 14.40
   in the first trial, older than the 14.51 toolset, which Microsoft does not support and
   delvewheel warns of). All modules load the one copy of each.
+- **Windows, built with MinGW-w64:** GCC's `libgomp-1.dll` of the toolchain, with the DLLs it
+  loads (`libwinpthread-1.dll`, `libgcc_s_seh-1.dll`), next to the modules under their own names
+  (delvewheel finds nothing to copy in). The cpp-zarr and cpp-tiff libraries load the same file
+  by that name, and Windows loads a DLL of a name once per process: one runtime for the three
+  ([decisions/0011](decisions/0011-windows-toolchain.md)). The build also copies the toolchain's
+  notices of them, as it ships them, into `petakit5d/_ext/licenses/` (THIRD_PARTY_NOTICES.md).
 
 ### The GPU extra
 
@@ -110,7 +117,9 @@ archive it can't read. The distribution comes from the file name: petakit5d or p
 - **The bundled libraries:** the libraries besides the modules are the expected ones: Linux, the
   libgomp copy next to the modules alone; macOS, `.dylibs/libomp.dylib`; Windows, one
   `libomp140.x86_64.dll` (next to the modules, or delvewheel's copy in `petakit5d.libs/`) and
-  delvewheel's copies of `msvcp140*.dll`; the add-on, its two FFTW libraries. Every library a
+  delvewheel's copies of `msvcp140*.dll`, or, with modules that load MinGW-w64's
+  `libgomp-1.dll`, that file, `libwinpthread-1.dll` and `libgcc_s_seh-1.dll` next to the modules
+  under their own names; the add-on, its two FFTW libraries. Every library a
   binary loads is in the wheel (found through its search path, or on Windows next to it or in
   `petakit5d.libs/`) or the system's: the C library, macOS's `/usr/lib` and `/System`, Windows'
   system DLLs, API sets and the Python DLL and C runtime every CPython ships. All modules load
@@ -126,6 +135,14 @@ archive it can't read. The distribution comes from the file name: petakit5d or p
   (delvewheel's copies of `libomp140` and `msvcp140*`, by name) name the folders of Microsoft's
   own builds (`D:\a\_work\1\s\...`): when Microsoft's Authenticode certificate is on them, they
   get the `--forbid` patterns only. No compiled Python file is carried.
+- **MinGW-w64's notices:** a Windows wheel whose binaries GNU ld linked (the linker version in
+  their PE header: GNU ld writes its own, 2.x, MSVC's linker 14.x) carries the toolchain's notices
+  that the build copies in, as text: GCC's `COPYING3` and `COPYING.RUNTIME`, MinGW-w64's runtime
+  notice and winpthreads' `COPYING` in `petakit5d/_ext/licenses/` (the add-on: the first three in
+  `petakit5d_fftw/licenses/`). Those exact paths, and only they, are left out of the search
+  above: the texts are third-party ones, kept as the toolchain ships them (the runtime notice
+  cites a mailing-list URL that a site's node-name pattern can match); every other member is
+  searched, a binary put at one of those paths too.
 - **No FFTW** (GPL) in petakit5d's binaries: no symbol `fftw*_` defined, no FFTW version string.
 - **The license:** METADATA's `License-Expression` (`BSD-3-Clause`; the add-on's
   `GPL-2.0-or-later`), and every `License-File`, the project's three among them (the add-on's
@@ -218,6 +235,8 @@ shipping them with code under any license.
 | libgomp (Linux) | `petakit5d/_ext/libgomp-e985bcbb.so.1.0.0` | GPL-3.0 with the GCC Runtime Library Exception |
 | libomp (macOS) | `petakit5d/.dylibs/` | Apache-2.0 with LLVM exceptions |
 | libomp140, MSVC C++ runtime (Windows) | `petakit5d.libs/` (or `petakit5d/_ext/`) | Microsoft's redistributable terms (the Visual Studio that builds the wheel: 2026 on the windows-2025 runners) |
+| libgomp-1, libgcc_s_seh-1 (Windows, MinGW-w64); libstdc++, libgcc linked statically | `petakit5d/_ext/` | GPL-3.0 with the GCC Runtime Library Exception; the toolchain's texts in `petakit5d/_ext/licenses/gcc/` |
+| MinGW-w64's runtime (linked statically), winpthreads (`libwinpthread-1.dll`) (Windows, MinGW-w64) | the modules; `petakit5d/_ext/` | the mingw-w64 project's BSD-style license with its parts' notices; MIT with a BSD notice: the toolchain's texts in `petakit5d/_ext/licenses/mingw-w64/` and `winpthreads/` |
 
 ### Required packages
 

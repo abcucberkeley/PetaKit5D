@@ -1,7 +1,7 @@
 # OpenMP for the kernels: the interface target pk5d_openmp, and
 #   PK5D_OPENMP_FOUND    TRUE when the kernels are built with OpenMP
 #   PK5D_OPENMP_DESC     what was used (reported by petakit5d._ext.core.build_info())
-#   PK5D_OPENMP_RUNTIME  a runtime DLL to put next to the modules (Windows), or empty
+#   PK5D_OPENMP_RUNTIME  the runtime DLLs to put next to the modules (Windows), or empty
 #   PK5D_OPENMP_RPATH    the runtime's folder when it is not a system folder (Linux, macOS), or empty
 #   PK5D_OPENMP_SHARED   the SONAME of the I/O packages' libgomp when the modules share it (Linux),
 #                        "off" when PK5D_OPENMP_SHARE is OFF, else empty
@@ -11,6 +11,11 @@
 # macOS with Apple Clang: -Xpreprocessor -fopenmp and libomp (Homebrew's, or OpenMP_ROOT).
 # Windows with MSVC: /openmp:llvm (OpenMP 3.1 and more, as the kernels use: collapse,
 #   min/max reductions, unsigned loop indices), runtime libomp140.<arch>.dll.
+# Windows with MinGW-w64's GCC: -fopenmp, the toolchain's libgomp-1.dll with the DLLs it loads
+#   (libwinpthread-1.dll, libgcc_s_seh-1.dll), next to the modules under their own names. The
+#   cpp-zarr and cpp-tiff wheels' libraries load libgomp-1.dll of the same toolchain by that name,
+#   and Windows loads a DLL of a name once per process, so that the modules and the I/O packages
+#   share one runtime whichever loads first (docs/decisions/0011-windows-toolchain.md).
 #
 # One OpenMP runtime per process on Linux (docs/decisions/0008-openmp-runtime.md). The cpp-zarr
 # and cpp-tiff wheels bundle a libgomp that auditwheel renamed (libgomp-<hash>.so.1.0.0, also its
@@ -125,6 +130,48 @@ function(pk5d_find_shared_openmp toolchain_lib other_libs)
   set(_pk5d_shared_from "${_from}" PARENT_SCOPE)
 endfunction()
 
+# MinGW-w64: the toolchain's DLLs that the modules and libgomp-1.dll load (libgomp-1.dll,
+# libwinpthread-1.dll and what their import tables name), from the compiler's folder, in `out`
+function(pk5d_mingw_runtime_dlls out)
+  get_filename_component(_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+  set(_objdump "${CMAKE_OBJDUMP}")
+  if(NOT _objdump)
+    find_program(PK5D_OBJDUMP_EXE NAMES objdump HINTS "${_bin}")
+    set(_objdump "${PK5D_OBJDUMP_EXE}")
+  endif()
+  set(_todo libgomp-1.dll libwinpthread-1.dll)
+  set(_seen ${_todo})
+  set(_found "")
+  while(_todo)
+    list(POP_FRONT _todo _name)
+    if(NOT EXISTS "${_bin}/${_name}")
+      if(_name STREQUAL "libgomp-1.dll")
+        message(FATAL_ERROR "MinGW-w64: no libgomp-1.dll next to ${CMAKE_CXX_COMPILER}")
+      endif()
+      continue()
+    endif()
+    list(APPEND _found "${_bin}/${_name}")
+    if(_objdump)
+      execute_process(COMMAND "${_objdump}" -p "${_bin}/${_name}" OUTPUT_VARIABLE _imports
+                      ERROR_QUIET)
+      string(REGEX MATCHALL "DLL Name: [^\r\n]+" _names "${_imports}")
+      foreach(_n IN LISTS _names)
+        string(REGEX REPLACE "^DLL Name: " "" _n "${_n}")
+        string(STRIP "${_n}" _n)
+        if(NOT _n IN_LIST _seen AND EXISTS "${_bin}/${_n}")
+          list(APPEND _todo "${_n}")
+          list(APPEND _seen "${_n}")
+        endif()
+      endforeach()
+    elseif(NOT "libgcc_s_seh-1.dll" IN_LIST _seen)
+      # (without objdump: what GCC's libgomp-1.dll loads on x86-64)
+      list(APPEND _todo libgcc_s_seh-1.dll)
+      list(APPEND _seen libgcc_s_seh-1.dll)
+    endif()
+  endwhile()
+  set(${out} "${_found}" PARENT_SCOPE)
+endfunction()
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.28)
     message(WARNING "MSVC ${CMAKE_CXX_COMPILER_VERSION} has no /openmp:llvm (needs VS 2019 16.9 or newer)")
@@ -233,9 +280,19 @@ else()
       string(APPEND PK5D_OPENMP_DESC ", runtime ${PK5D_OPENMP_SHARED} (${_pk5d_shared_from}'s)")
     else()
       target_link_libraries(pk5d_openmp INTERFACE OpenMP::OpenMP_C OpenMP::OpenMP_CXX)
+      if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # MinGW-w64: the toolchain's runtime DLLs next to the modules, under their own names
+        pk5d_mingw_runtime_dlls(PK5D_OPENMP_RUNTIME)
+        set(_pk5d_omp_names "")
+        foreach(_dll IN LISTS PK5D_OPENMP_RUNTIME)
+          get_filename_component(_dll "${_dll}" NAME)
+          list(APPEND _pk5d_omp_names "${_dll}")
+        endforeach()
+        string(APPEND PK5D_OPENMP_DESC ", runtime libgomp-1.dll")
+        message(STATUS "petakit5d OpenMP: next to the modules: ${_pk5d_omp_names}")
       # a compiler newer than the system's needs its own runtime (newer GOMP symbol versions):
       # its folder goes on the modules' RPATH, also when installed
-      if(_pk5d_omp_lib)
+      elseif(_pk5d_omp_lib)
         get_filename_component(_dir "${_pk5d_omp_lib}" REALPATH)
         get_filename_component(_dir "${_dir}" DIRECTORY)
         if(NOT _dir MATCHES "^/(usr/)?lib(32|64)?(/[a-z0-9_]+-linux-gnu)?$")

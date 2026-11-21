@@ -12,11 +12,16 @@
 #include <memory>
 
 #include "backend.h"
+#include "pk5d/x87.hpp"
 
 #define POCKETFFT_NAMESPACE pk5d_pocketfft
 #define POCKETFFT_NO_MULTITHREADING
 #define POCKETFFT_CACHE_SIZE 0
 #include "pocketfft_hdronly.h"
+
+#if defined(__MINGW32__)
+#include <pthread.h>
+#endif
 
 namespace pk5d::fft {
 namespace {
@@ -26,6 +31,29 @@ using pk5d_pocketfft::detail::cmplx;
 using pk5d_pocketfft::detail::pocketfft_c;
 using pk5d_pocketfft::detail::pocketfft_r;
 using pk5d_pocketfft::detail::VLEN;
+
+// PK5D_THREAD_BUFFER(type, name): each thread's buffer of a call site. MinGW-w64: GCC emulates thread_local
+// there, and when a thread ends (OpenMP's threads do, as their teams change) winpthreads frees the emulated
+// storage before the module's TLS callback runs the destructors of its thread_local objects, which then
+// freed buffers through freed memory (heap corruption). There the buffer is kept under a pthread key of the
+// call site instead, whose destructor frees it.
+#if defined(__MINGW32__)
+template <typename B, int Site>
+B& thread_buffer() {
+    static pthread_key_t key;
+    static pthread_once_t once = PTHREAD_ONCE_INIT;
+    pthread_once(&once, [] { pthread_key_create(&key, [](void* b) { delete static_cast<B*>(b); }); });
+    B* b = static_cast<B*>(pthread_getspecific(key));
+    if (b == nullptr) {
+        b = new B;
+        pthread_setspecific(key, b);
+    }
+    return *b;
+}
+#define PK5D_THREAD_BUFFER(type, name) type& name = thread_buffer<type, __LINE__>()
+#else
+#define PK5D_THREAD_BUFFER(type, name) thread_local type name
+#endif
 
 enum Kind { kC2C = 0, kR2C = 1, kC2R = 2 };
 
@@ -56,6 +84,10 @@ Plan<T>* make_plan(int kind, int rank, const Iodim* dims, int hrank, const Iodim
         p->odist = hdims[0].os;
     }
     try {
+#if defined(__MINGW32__)
+        // pocketfft's twiddle factors start from an angle computed in long double (pk5d/x87.hpp)
+        pk5d::x87_extended x87;
+#endif
         if (kind == kC2C) {
             p->c.reset(new pocketfft_c<T>(p->n));
         } else {
@@ -91,7 +123,7 @@ inline void set_lane(V& v, size_t l, T x) {
 // W lines from line j0 (W = 1: scalar; else pocketfft's vector type, lane l = line j0 + l)
 template <typename T, typename V, size_t W>
 void run_c2c(const Plan<T>& p, const T* in, T* out, size_t j0) {
-    thread_local arr<cmplx<V>> buf;
+    PK5D_THREAD_BUFFER(arr<cmplx<V>>, buf);
     if (buf.size() < p.n) buf.resize(p.n);
     cmplx<V>* b = buf.data();
     for (size_t l = 0; l < W; l++) {
@@ -114,7 +146,7 @@ void run_c2c(const Plan<T>& p, const T* in, T* out, size_t j0) {
 // real to complex: pocketfft's half-complex order (r0, r1, i1, r2, i2, ...) into FFTW's n / 2 + 1 values
 template <typename T, typename V, size_t W>
 void run_r2c(const Plan<T>& p, const T* in, T* out, size_t j0) {
-    thread_local arr<V> buf;
+    PK5D_THREAD_BUFFER(arr<V>, buf);
     if (buf.size() < p.n) buf.resize(p.n);
     V* b = buf.data();
     const size_t n = p.n;
@@ -142,7 +174,7 @@ void run_r2c(const Plan<T>& p, const T* in, T* out, size_t j0) {
 // complex to real: FFTW's n / 2 + 1 values (the imaginary parts of the first and, n even, the last ignored)
 template <typename T, typename V, size_t W>
 void run_c2r(const Plan<T>& p, const T* in, T* out, size_t j0) {
-    thread_local arr<V> buf;
+    PK5D_THREAD_BUFFER(arr<V>, buf);
     if (buf.size() < p.n) buf.resize(p.n);
     V* b = buf.data();
     const size_t n = p.n;
