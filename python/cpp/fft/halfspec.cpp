@@ -5,12 +5,58 @@
 #include <complex>
 #include <stdexcept>
 
+#include "pk5d/x87.hpp"
+
 #define POCKETFFT_NAMESPACE pk5d_pocketfft_mt
 #define POCKETFFT_CACHE_SIZE 16
 #include "pocketfft_hdronly.h"
 
+#if defined(__MINGW32__)
+#include <mutex>
+
+// MinGW-w64: pocketfft's thread pool is a static object of each module that links this file. At the
+// process's exit Windows ends every other thread first, then runs the modules' static destructors, and
+// destroying the pool's condition variables (winpthreads) waits forever for the threads that waited on
+// them: the process never exits. So the pool's threads are ended at the interpreter's exit instead
+// (Py_AtExit, registered at the first multi-threaded transform), while they still run.
+extern "C" int Py_AtExit(void (*func)(void));
+#endif
+
 namespace pk5d::fft {
 namespace {
+
+#if defined(__MINGW32__)
+std::mutex& pool_mutex() {
+    static std::mutex m;
+    return m;
+}
+bool pool_running = false;
+bool pool_ended = false;
+
+void end_pool() {
+    std::lock_guard<std::mutex> g(pool_mutex());
+    if (pool_running) {
+        pk5d_pocketfft_mt::detail::threading::get_pool().shutdown();
+        pool_running = false;
+        pool_ended = true;
+    }
+}
+
+// before a transform on nt threads: the pool runs, and is ended at the interpreter's exit
+void use_pool(size_t nt) {
+    if (nt <= 1) return;
+    std::lock_guard<std::mutex> g(pool_mutex());
+    if (pool_running) return;
+    static bool registered = false;
+    if (!registered) registered = Py_AtExit(end_pool) == 0;
+    if (pool_ended) {
+        pk5d_pocketfft_mt::detail::threading::get_pool().restart();
+    } else {
+        pk5d_pocketfft_mt::detail::threading::get_pool();
+    }
+    pool_running = true;
+}
+#endif
 
 using shape_t = pk5d_pocketfft_mt::shape_t;
 using stride_t = pk5d_pocketfft_mt::stride_t;
@@ -44,6 +90,10 @@ shape_t all_axes(size_t nd) {
 
 template <typename T>
 void forward_t(const T* x, const std::vector<std::int64_t>& shape, T* h, int threads) {
+#if defined(__MINGW32__)
+    use_pool(static_cast<size_t>(threads > 0 ? threads : 1));
+    pk5d::x87_extended x87;  // pocketfft's plans (pk5d/x87.hpp), made on this thread
+#endif
     const shape_t s = to_shape(shape);
     shape_t sh = s;
     sh.back() = s.back() / 2 + 1;
@@ -56,6 +106,10 @@ void forward_t(const T* x, const std::vector<std::int64_t>& shape, T* h, int thr
 // last, the factor applied there; here the first part runs in place on h, without pocketfft's temporary copy
 template <typename T>
 void inverse_t(T* h, const std::vector<std::int64_t>& shape, T* y, int threads) {
+#if defined(__MINGW32__)
+    use_pool(static_cast<size_t>(threads > 0 ? threads : 1));
+    pk5d::x87_extended x87;
+#endif
     const shape_t s = to_shape(shape);
     shape_t sh = s;
     sh.back() = s.back() / 2 + 1;
