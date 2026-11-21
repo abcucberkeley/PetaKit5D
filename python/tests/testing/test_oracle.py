@@ -697,7 +697,9 @@ def make_text_tree(d):
         (d / f"f{i}.txt").write_text(str(i) * 1000, newline="\n")
 
 
-def fake_publish(store, case, outputs, status="ok", error=None, work="/scratch/pkpy_1/w/abc"):
+def fake_publish(
+    store, case, outputs, status="ok", error=None, work="/scratch/pkpy_1/w/abc", warnings=()
+):
     """write a case result as the MATLAB runner does (staging folder, then one rename)"""
     key = case.key()
     stage = store.staging("test") / key
@@ -710,7 +712,7 @@ def fake_publish(store, case, outputs, status="ok", error=None, work="/scratch/p
         "id": case.id,
         "status": status,
         "error": error,
-        "warnings": [],
+        "warnings": list(warnings),
         "capture": False,
         "files": [],
         "deleted": [],
@@ -811,6 +813,85 @@ def test_reference_errors_must_be_expected(tmp_path, monkeypatch):
     with pytest.warns(UserWarning, match="manifest"):
         with pytest.raises(pytest.fail.Exception, match="Python returned normally"):
             oracle.check(expected, tmp_path / "r2")
+
+
+class _ThirdPartyError(ValueError):
+    def __init__(self, identifier):
+        super().__init__("the port's own words")
+        if identifier is not None:
+            self.identifier = identifier
+
+
+def test_a_withheld_error_text_stays_out_of_the_manifest(tmp_path, monkeypatch):
+    """Case(error_text='withheld') (third-party MATLAB code): the manifest keeps the identifiers
+    of the error and the warnings, not their messages, no report shows them, and the error is
+    compared by its identifier only, an empty one too"""
+    commit = oracle.expected_commit()
+    golden = tmp_path / "golden"
+    golden.mkdir()
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+    monkeypatch.setenv(oracle.ENV_COMMIT, commit)
+    monkeypatch.delenv(oracle.ENV_ORACLE, raising=False)
+    store = oracle.Store(golden, commit)
+    mfile = tmp_path / "tp.oracle.json"
+    globs = {"__file__": str(tmp_path / "test_tp.py"), "ORACLE_MANIFEST": str(mfile)}
+
+    def make(identifier, error_text="withheld"):
+        def py(x):
+            raise _ThirdPartyError(identifier)
+
+        c = Case(
+            "tp",
+            matlab="error",
+            args=[3.0],
+            python=py,
+            expect_error=True,
+            py_error=_ThirdPartyError,
+            error_text=error_text,
+        )
+        c._module_globals = globs
+        return c
+
+    case = make("")
+    secret = {"identifier": "", "message": "a third-party sentence"}
+    warn = {"identifier": "tp:warns", "message": "a third-party warning"}
+    fake_publish(store, case, [], status="error", error=secret, warnings=[warn])
+    with pytest.warns(UserWarning, match="manifest"):
+        oracle.check(case, tmp_path / "r1")  # store: the empty identifiers agree
+    oracle._REGISTRY[str(tmp_path / "test_tp.py")] = [case]
+    oracle._write_manifests([("n", case)], store, None)
+    text = mfile.read_text()
+    assert "third-party sentence" not in text and "third-party warning" not in text
+    entry = json.loads(text)["cases"]["tp"]
+    assert entry["error"] == {"identifier": "", "message": oracle.WITHHELD_TEXT}
+    assert entry["warnings"] == [{"identifier": "tp:warns", "message": oracle.WITHHELD_TEXT}]
+    assert entry["key"] == case.key() == make("", "record").key()  # the key leaves it alone
+    for where in ("store", "manifest"):
+        if where == "store":
+            monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+        else:
+            monkeypatch.delenv(oracle.ENV_GOLDEN, raising=False)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            oracle.check(make(""), tmp_path / f"{where}_ok")
+            for ident, problem in (("tp:other", "'tp:other'"), (None, "no identifier attribute")):
+                with pytest.raises(pytest.fail.Exception) as err:
+                    oracle.check(make(ident), tmp_path / f"{where}_{str(ident).replace(':', '_')}")
+                msg = str(err.value)
+                assert problem in msg and "third-party sentence" not in msg, msg
+    # recorded texts are kept, and a recorded empty identifier is not compared
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+    rec = make("", "record")
+    oracle._REGISTRY[str(tmp_path / "test_tp.py")] = [rec]
+    oracle._write_manifests([("n", rec)], store, None)
+    assert json.loads(mfile.read_text())["cases"]["tp"]["error"] == secret
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        oracle.check(make("tp:other", "record"), tmp_path / "rec")
+    with pytest.raises(ValueError, match="cannot be compared"):
+        Case("x", matlab="f", error_text="withheld", error_message=True)
+    with pytest.raises(ValueError, match="'record' or 'withheld'"):
+        Case("x", matlab="f", error_text="hidden")
 
 
 def test_a_tolerance_on_a_hash_only_manifest_is_skipped_not_failed(tmp_path, monkeypatch):

@@ -428,8 +428,18 @@ def _clean_text(s: str, masks: Masks) -> str:
     return _ABS_PATH.sub("<PATH>", masks.text(s or ""))
 
 
+# a message of MATLAB code whose texts the repository does not keep (Case.error_text)
+WITHHELD_TEXT = "(third-party text: withheld)"
+
+
+def _message(case: Case, d: dict | None) -> str:
+    """the message of a reference's error or warning as reports may show it"""
+    return WITHHELD_TEXT if case.error_text == "withheld" else (d or {}).get("message", "")
+
+
 def manifest_entry(case: Case, ref: Reference) -> dict:
-    """the manifest entry of a stored reference: no paths, hosts or times"""
+    """the manifest entry of a stored reference: no paths, hosts or times (and no message
+    texts of a case whose texts are withheld)"""
     m = ref.masks.with_paths(oracle=str(oracle_dir() or ""), golden=os.environ.get(ENV_GOLDEN, ""))
     outs = None
     if ref.outputs is not None:
@@ -437,12 +447,13 @@ def manifest_entry(case: Case, ref: Reference) -> dict:
     files = None
     if ref.files is not None:
         files = describe_tree(ref.files, case.tree, ref.masks.plus(*case.tree.masks))
+
+    def text(d: dict) -> str:
+        return _clean_text(_message(case, d), m)
+
     err = None
     if ref.error:
-        err = {
-            "identifier": ref.error.get("identifier", ""),
-            "message": _clean_text(ref.error.get("message", ""), m),
-        }
+        err = {"identifier": ref.error.get("identifier", ""), "message": text(ref.error)}
     return {
         "key": ref.key,
         "oracle": ref.commit,
@@ -451,8 +462,7 @@ def manifest_entry(case: Case, ref: Reference) -> dict:
         "status": ref.status,
         "error": err,
         "warnings": [
-            {"identifier": w.get("identifier", ""), "message": _clean_text(w.get("message", ""), m)}
-            for w in ref.warnings
+            {"identifier": w.get("identifier", ""), "message": text(w)} for w in ref.warnings
         ],
         "outputs": outs,
         "files": files,
@@ -525,7 +535,9 @@ def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
     rm, am = case_masks(ref, res)
     if ref.status == "error":
         rid = (ref.error or {}).get("identifier", "")
-        rmsg = (ref.error or {}).get("message", "")
+        rmsg = _message(case, ref.error)
+        # a withheld message leaves the identifier to compare, an empty one too
+        by_id = bool(rid) or case.error_text == "withheld"
         if res.error is None:
             rep.add(
                 "error",
@@ -541,8 +553,15 @@ def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
                     "error",
                     f"Python raised {type(res.error).__name__}, the case allows {case.py_error}",
                 )
-            if rid and pid is not None and pid != rid:
-                rep.add("error", "identifier", f"MATLAB {rid}, Python {pid}")
+            if by_id and pid is not None and pid != rid:
+                rep.add("error", "identifier", f"MATLAB {rid!r}, Python {pid!r}")
+            elif case.error_text == "withheld" and pid is None:
+                rep.add(
+                    "error",
+                    "identifier",
+                    f"MATLAB raised {rid!r}; the Python exception has no identifier attribute "
+                    "(the case compares identifiers only)",
+                )
             elif rid and pid is None:
                 rep.note(
                     "error",
@@ -704,13 +723,13 @@ def check(case: Case, tmp_path: str | os.PathLike) -> Report:
     ):
         pytest.fail(
             f"case {case.id}: expects error {case.expect_error}, MATLAB raised "
-            f"{ref.error.get('identifier')!r}: {ref.error.get('message')}",
+            f"{ref.error.get('identifier')!r}: {_message(case, ref.error)}",
             pytrace=False,
         )
     if not case.expect_error and ref.status == "error":
         e = ref.error or {}
         pytest.fail(
-            f"case {case.id}: MATLAB raised {e.get('identifier')!r}: {e.get('message')} "
+            f"case {case.id}: MATLAB raised {e.get('identifier')!r}: {_message(case, e)} "
             "(set expect_error=True if that is what the case tests)",
             pytrace=False,
         )
@@ -1032,7 +1051,7 @@ def cmd_run(ns: argparse.Namespace) -> int:
             if meta["status"] == "error" and not c.expect_error:
                 errs.append(
                     f"{c.id}: MATLAB raised {meta.get('error', {}).get('identifier')!r}: "
-                    f"{meta.get('error', {}).get('message')}"
+                    f"{_message(c, meta.get('error'))}"
                 )
     if still:
         rc = 1
