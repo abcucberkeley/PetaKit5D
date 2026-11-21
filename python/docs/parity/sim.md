@@ -4,7 +4,7 @@ MATLAB has no tests of `third_parties/sim3D`; the oracle cases are the port's ow
 (`tests/sim/test_sim_steps.py`, `tests/sim/test_sim_recon.py`): synthetic 5-phase lattice data
 with a known pattern (`sim.synthetic`, also 3 phases and 3-beam), the 2020 lattice SIM data of
 the demo data (5 and 3 phases) with the settings checked against the original 2020 workflow, and
-GPU cases. Each case's `reason` names its row. The rows are **proposed** (C06, 2026-11-19); the
+GPU cases. Each case's `reason` names its row. The rows were proposed by C06 on 2026-11-19 and approved by the user on 2026-11-20; the
 measured values are the largest of the cases of the row, the port's default FFT backend against
 MATLAB R2024b on Linux x86-64 (GPU: an A100).
 

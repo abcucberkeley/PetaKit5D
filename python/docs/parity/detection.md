@@ -2,9 +2,9 @@
 
 The port matches MATLAB bit for bit unless an oracle case declares a tolerance
 (`petakit5d.testing.compare.tol`, see [testing.md](../testing.md)). This page lists the
-proposed tolerances of `petakit5d.detection`, with what was measured and why the bits differ.
+tolerances of `petakit5d.detection`, with what was measured and why the bits differ.
 Each case's `reason` names its row as `detection_scope.md statistics Sn` (the scope document
-has the same rows). All rows are **proposed** (2026-11-19), waiting for the user's decision
+has the same rows). All rows were approved by the user on 2026-11-20
 ([index.md](index.md)).
 
 ## Statistics functions (`detection.stats`, C01)
@@ -83,7 +83,7 @@ and 20,230 voxels; the PSFs' 306, 448, 452, 114, 198 and 196) and starts.
 | D5 | the mex's nonlinear modes (`'xyzAsrc'` of the sigma estimate, `'xyzAc'`) | the sigma estimate's 31 traced fits: parameters within 9e-8 relative; the residual window 1.4e-7 | `rel` 1e-6, `abs` 1e-6 | D4's last bits steer the trust-region path; the fit stops where the residuals' decrease is at rounding level, about 1e-8 from the minimum, so the two stop at different points |
 | D6 | `GU_estimateSigma3D`: `sigmaXY`, `sigmaZ`, the bead's position | the demo's PSFs: 1.5e-10 and 6.7e-11 (560 nm), 3.0e-10 and 1.2e-9 (642 nm) relative; the oracle case within 1e-7 | `rel` 1e-7 | D5 (three rounds of the 'speedup' detector with the mex's fits) |
 | D7 | the 'speedup' detector `XR_pointSourceDetection3D` | `'CD_Newton'` (XR_runDetection3D's): 4 demo frames, the same 661, 649 and 668 detections, values within 1.5e-14 for 99 %, restarted fits 3.3e-9; with the mex (the sigma estimate's form) as D5 | `rel` 1e-9, `abs` 1e-9 (D3's) with `'CD_Newton'`; D5's with the mex | D2's window sums, D3's fits, D5's; the t threshold's `tinv` (S5: 5.7e-13) changes no mask voxel |
-| D8 | `XR_runDetection3D`'s `frameInfo` with its defaults ('speedup', no background correction) | 2 demo frames, both channels: the same 661 and 649 detections; the master's values within 3.3e-9 relative (D7), the other channel's A within 1.6e-4, c 9.3e-7, positions 6e-15; every test (`hval_AD`, `isPSF`) the same | D7's, and `rel` 1e-3 for the other channel's A and c (proposed; no case yet) | D3 in the other channel's `'xyzAc'` fits from the master's positions, which move up to 4 voxels; one in 600 stops where the residuals barely change |
+| D8 | `XR_runDetection3D`'s `frameInfo` with its defaults ('speedup', no background correction) | 2 demo frames, both channels: the same 661 and 649 detections; the master's values within 3.3e-9 relative (D7), the other channel's A within 1.6e-4, c 9.3e-7, positions 6e-15; every test (`hval_AD`, `isPSF`) the same | D7's, and `rel` 1e-3 for the other channel's A and c (no case yet) | D3 in the other channel's `'xyzAc'` fits from the master's positions, which move up to 4 voxels; one in 600 stops where the residuals barely change |
 | D9 | the camera search on Windows (`get_camera_type_from_setting_file`: `data.source` split at `filesep`, each folder up listed with `dir`) | deduced from the lab code (no MATLAB on Windows here): MATLAB splits at `\` only, so it walks a source written with `/` (the oracle harness writes its paths so) no higher than its last `\` and misses a settings file above it (`MATLAB:UndefinedFunction`); `strsplit`'s merged separators would make a UNC path's `\\server` `\server` | none: the port splits at both separators, which MATLAB's `dir` and `fileparts` take on Windows, and keeps a UNC prefix; the oracle cases on Windows find the settings files MATLAB finds on Linux | MATLAB's bug, fixed in the port |
 
 The camera search's walk ends at an absolute path's first part: on Linux `''`, which `dir`
@@ -147,7 +147,7 @@ structs (`detection.condition`; `date` checked against MATLAB's probed rule, sin
 digits of each side's own folder path), the deskewed frames with `settings.mat` and
 `dynRange.mat` (`detection.wrapper.deskew_data`), the channel offsets, `xz_offset.mat` and the
 padded frames (`detection.offsets`), and `interp1` (`matlabcompat.interp`). The cases' `reason`
-names its row as `detection.md Wn`. Proposed (2026-11-19), waiting for the user's decision.
+names its row as `detection.md Wn`. Approved by the user on 2026-11-20.
 
 | Row | Function and range | Measured (largest) | Tolerance | Cause |
 |---|---|---|---|---|
@@ -160,7 +160,7 @@ measured on synthetic data (probe job 4634531, oracle tree 45b2bb1).
 - The oracle cases compare the port with the corrected MATLAB call.
 - `run_detection_tracking(..., matlab_quirks=True)` gives MATLAB's output for W2 and W3;
   `deskew_data(..., reverse=False)`, deskewData's default, gives it for one deskew.
-- Proposed (2026-11-20), waiting for the user's decision.
+- Approved by the user on 2026-11-20.
 
 | Row | Where | MATLAB | The port | Evidence |
 |---|---|---|---|---|
@@ -189,7 +189,7 @@ probes, and the files MATLAB writes; no GPL or MathWorks source read. `XR_amiraW
 the lab's and was read. The gap and buffer fits are `detection.fit`'s: `fit_cd` (row D3) for
 the free fits, the `fitGaussian3D` mex's mode `'Ac'` (row D4) for the refits at the given
 positions; the interpolations are `matlabcompat.interp.interp1`'s (bit for bit: C04a's section).
-Proposed (2026-11-20), waiting for the user's decision.
+Approved by the user on 2026-11-20.
 
 Bit for bit on the demo (10,917 tracker tracks, 3,636 processed tracks): the set and order of the
 tracks (single-frame and border tracks dropped, compound tracks decoupled, the stable sort by
