@@ -30,6 +30,7 @@ THIRD_PARTY_FUNCTIONS = {
     "rotateFrame3D",  # the same
     "XR_loadConditionData3D",  # the header names an outside author (cmeAnalysis)
     "XR_runDetection3D",  # the same
+    "XR_runDetection3D_frame_parallel",  # the same
     "XR_runTrackProcessing3D",  # the same
     "XR_runTracking3D",  # the same
     "runLifetimeAnalysis3D",  # the same
@@ -110,6 +111,7 @@ def test_the_stored_extract_is_in_the_makers_form(extract_json):
         ("pointDetection/llsmtools/transforms/deskewFrame3D.m", True),
         ("pointDetection\\llsmtools\\transforms\\rotateFrame3D.m", True),
         ("pointDetection/XR_runDetection3D.m", True),
+        ("pointDetection/XR_runDetection3D_frame_parallel.m", True),
         ("pointDetection/runLifetimeAnalysis3D.m", True),
         ("pointDetection/rotateTracks3D.m", True),
         ("pointDetection/deskewData.m", True),
@@ -131,7 +133,7 @@ def test_whose_code_it_is(file, third):
 @pytest.mark.parametrize(
     "file",
     [
-        "pointDetection/XR_runDetection3D_frame_parallel.m",
+        "pointDetection/XR_new_fake_frame_parallel.m",
         "pointDetection/src/XR_new_fake.m",
         "third_parties/normxcorr3/normxcorr3.m",
         "third_parties/sim3D_old/x.m",

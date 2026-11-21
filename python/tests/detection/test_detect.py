@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from petakit5d.core.arrays import from_matlab, to_matlab
+from petakit5d.core.dtypes import NAN
 from petakit5d.detection import detect, fit
 from petakit5d.matlabcompat import neighbors, signal
 from petakit5d.testing import oracle, synth
@@ -239,6 +240,27 @@ def _cases():
                 inputs={"sr": _val(si["sr"])},
             )
         )
+    # one finite value (the bad-point filter's histogram of few residual sigmas: the limits
+    # v -/+ 0.5 to multiples of 0.5, a tie toward v), NaN and infinities beside it, none finite
+    inf = np.inf
+    for name, x, n in (
+        ("one", [2.814], 60.0),
+        ("equal", [6.36, 6.36, 6.36], 17.0),
+        ("tie", [0.75, 0.75], 13.0),
+        ("with_nan", [0.25, NAN, 0.25, inf], 4.0),
+        ("none_finite", [NAN, inf, -inf], 13.0),
+        ("finite_and_not", [3.0, NAN, 5.5, -inf, 4.0], 13.0),
+    ):
+        cs.append(
+            Case(
+                f"histcounts.{name}.n{int(n)}",
+                matlab="histcounts",
+                args=[In("x"), n],
+                nargout=2,
+                python=_py_histcounts,
+                inputs={"x": _val(np.array([x], dtype=np.float64))},
+            )
+        )
     cs.append(
         Case(
             "findpeaks.prominence5",
@@ -286,6 +308,23 @@ def _cases():
                     compare={0: EXACT, 1: TOL_DETECT, 2: EXACT},
                 )
             )
+    # a frame with two spots: the bad-point filter's scalar true for fewer than three points,
+    # with which MATLAB's detector keeps both (task C02c)
+    cs.append(
+        Case(
+            "psd_lowsnr.two_spots",
+            code=REF.CLEAR_CODE
+            + "vol = in{1}; bi = XR_estimate_overall_background_information(vol, "
+            + "'randseed', 1); [ps, mask] = XR_pointSourceDetection3D_3(vol, in{2}, "
+            + REF.LOWSNR_OPTS
+            + ", 'BackgroundInfo', [bi, 3]); out = {bi, ps, mask};",
+            args=[In("vol"), [1.3, 1.6]],
+            nargout=3,
+            inputs={"vol": Value(lambda: to_matlab(_two_spot_frame()))},
+            python=_py_lowsnr,
+            compare={0: EXACT, 1: TOL_DETECT, 2: EXACT},
+        )
+    )
     # C01's references of the 'speedup' detector (PointDetectionTest's form, the sigma
     # estimate's form): the same MATLAB code and inputs, so the same keys
     for c in (1, 2):
@@ -353,8 +392,8 @@ def _py_frame_parallel(rt, sigma):
     rp = [data[0].source + "Analysis" + os.sep]
     run.run_detection_frame_parallel(
         data,
-        np.asarray(sigma),
-        rp,
+        sigma=np.asarray(sigma),
+        results_path=rp,
         overwrite=False,
         window_size=None,
         mode="xyzAc",
@@ -389,6 +428,14 @@ def _spots_volume(seed: str, spots, noise=5.0, bg=100.0, shape=(24, 64, 64), sig
     return v + noise * _rng(seed).normal(shape)
 
 
+def _two_spot_frame() -> np.ndarray:
+    """the oracle case's two-spot frame in whole counts, as a camera gives them (exp's last bits
+    follow the CPU's vector unit, the rounded counts do not)"""
+    v = _spots_volume("two", SPOTS[:2])
+    t = np.trunc(v)
+    return t + np.where(np.abs(v - t) >= 0.5, np.sign(v), 0.0)
+
+
 SPOTS = [
     ((12.3, 14.6, 8.2), 120.0),
     ((40.7, 20.1, 12.5), 90.0),
@@ -409,6 +456,20 @@ def test_spots_are_found_where_they_are():
         assert d[i] < 0.25
         assert abs(ps["A"][i] - a) < 0.1 * a
     assert len(P) == len(SPOTS)
+
+
+def test_two_spots_are_kept_by_the_bad_point_filter():
+    """a frame with two detections: the bad-point filter's scalar true for fewer than three
+    points keeps both (MATLAB's detector on frames of one and two spots, task C02c's probe fu1;
+    the oracle case psd_lowsnr.two_spots)"""
+    detect.clear_threshold_cache()
+    v = _spots_volume("two", SPOTS[:2])
+    bi = detect.estimate_background(v, 1)
+    ps, _ = detect.point_source_detection(v, (1.3, 1.6), background_info=np.r_[bi, 3.0])
+    P = np.stack([ps["x"], ps["y"], ps["z"]], 1)
+    assert len(P) == 2
+    for (x, y, z), _a in SPOTS[:2]:
+        assert np.abs(P - np.array([x, y, z])).max(axis=1).min() < 0.25
 
 
 def test_noise_gives_no_detection():
@@ -540,8 +601,8 @@ def test_run_detection_writes_detections_and_masks(tmp_path):
     res = tmp_path / "Analysis"
     (entries,) = run.run_detection(
         _movie(tmp_path),
-        SIGMA_RUN,
-        [str(res) + os.sep],
+        sigma=SIGMA_RUN,
+        results_path=[str(res) + os.sep],
         detection_method="speedup",
         write_amira=False,
     )
@@ -576,18 +637,18 @@ def test_run_detection_takes_a_condition(tmp_path):
     matfile.write_mat(ra + "Detection3D.mat", {"marker": 1.0})
     detect.clear_speedup_cache()
     out = run.run_detection(
-        data, SIGMA_RUN, [ra, rb], detection_method="speedup", write_amira=False
+        data, sigma=SIGMA_RUN, results_path=[ra, rb], detection_method="speedup", write_amira=False
     )
     assert out[0] is None and list(matfile.read_mat(ra + "Detection3D.mat")) == ["marker"]
     assert len(out[1]) == 1 and os.path.isfile(rb + "Detection3D.mat")
     assert os.listdir(rb) == ["Masks"] and os.listdir(os.path.join(rb, "Masks")) == ["dmask_1.tif"]
     # the defaults: the Analysis folder, 'speedup' (the same detections), skipped when there
-    (got,) = run.run_detection(m, SIGMA_RUN, write_amira=False)
+    (got,) = run.run_detection(m, sigma=SIGMA_RUN, write_amira=False)
     default = m["source"] + "Analysis" + os.sep + "Detection3D.mat"
     assert os.path.isfile(default)
     assert np.array_equal(got[0]["x"], out[1][0]["x"], equal_nan=True)
     stamp = os.path.getmtime(default)
-    assert run.run_detection(m, SIGMA_RUN, write_amira=False) == [None]
+    assert run.run_detection(m, sigma=SIGMA_RUN, write_amira=False) == [None]
     assert os.path.getmtime(default) == stamp
 
 
@@ -628,7 +689,10 @@ def test_run_detection_sigma_rows_past_the_channels(tmp_path):
     detect.clear_speedup_cache()
     s3 = np.vstack([SIGMA_RUN, [1.58, 1.608]])
     (entries,) = run.run_detection(
-        _movie(tmp_path, frames=1), s3, [str(tmp_path / "R") + os.sep], write_amira=False
+        _movie(tmp_path, frames=1),
+        sigma=s3,
+        results_path=[str(tmp_path / "R") + os.sep],
+        write_amira=False,
     )
     e = entries[0]
     assert np.asarray(e["x"]).shape[0] == 2 and np.asarray(e["isPSF"]).shape[0] == 2
@@ -650,13 +714,26 @@ def test_run_detection_refuses_what_is_not_ported(tmp_path):
         ({"mode": "xyzAsc"}, NotImplementedError),
         ({"fit_mixtures": True}, NotImplementedError),
         ({"detection_method": "original"}, NotImplementedError),
+        # MATLAB's parameters the port takes at their defaults only (the registration's)
+        ({"remove_redundant": False}, NotImplementedError),
+        ({"redundancy_radius": 0.25}, NotImplementedError),
+        ({"master": 2}, NotImplementedError),
+        ({"alpha": 0.01}, NotImplementedError),
+        ({"file_name": "D.mat"}, NotImplementedError),
+        ({"filter_by_residual_sigma": False}, NotImplementedError),
     ):
         with pytest.raises(err):
-            run.run_detection(m, SIGMA_RUN, rp, **kw)
+            run.run_detection(m, sigma=SIGMA_RUN, results_path=rp, **kw)
+    # the defaults in MATLAB's forms pass the guard ([] for none, a logical, a 1 x 1 double)
+    matlab_forms = (np.array([[True]]), np.array([[0.5]]), True, np.zeros((0, 0)), 0.05, [],
+                    "Detection3D.mat", 1.0)  # fmt: skip
+    run._defaults_only("run_detection", matlab_forms)
+    with pytest.raises(TypeError):  # sigma and the folders by name only
+        run.run_detection(m, SIGMA_RUN, rp)
     with pytest.raises(TypeError):  # MATLAB's 'ResultsPath' must be a cell
-        run.run_detection(m, SIGMA_RUN, rp[0])
+        run.run_detection(m, sigma=SIGMA_RUN, results_path=rp[0])
     with pytest.raises(ValueError):
-        run.run_detection(m, None, rp)
+        run.run_detection(m, sigma=None, results_path=rp)
     assert not os.path.exists(rp[0])
 
 
@@ -688,9 +765,11 @@ def test_frame_parallel_writes_run_detection_s_files(tmp_path):
     m = _movie(tmp_path)
     ra, rb = str(tmp_path / "RA") + os.sep, str(tmp_path / "RB") + os.sep
     detect.clear_threshold_cache()
-    (ea,) = run.run_detection(m, SIGMA_RUN, [ra], detection_method="lowSNR")
+    (ea,) = run.run_detection(m, sigma=SIGMA_RUN, results_path=[ra], detection_method="lowSNR")
     detect.clear_threshold_cache()
-    (eb,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rb], detection_method="lowSNR")
+    (eb,) = run.run_detection_frame_parallel(
+        m, sigma=SIGMA_RUN, results_path=[rb], detection_method="lowSNR"
+    )
     fa, fb = _fp_entries(ra + "Detection3D.mat"), _fp_entries(rb + "Detection3D.mat")
     assert len(fa) == len(fb) == 3 and all(_same_entry(a, b) for a, b in zip(fa, fb, strict=True))
     assert sorted(os.listdir(rb + "Detections")) == [f"Detection_F_{k}.mat" for k in (1, 2, 3)]
@@ -717,7 +796,9 @@ def test_frame_parallel_reuses_frames_and_skips_movies(tmp_path):
     m = _movie(tmp_path)
     rp = str(tmp_path / "R") + os.sep
     detect.clear_threshold_cache()
-    (first,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    (first,) = run.run_detection_frame_parallel(
+        m, sigma=SIGMA_RUN, results_path=[rp], detection_method="lowSNR"
+    )
     # frame 2's file changed, Detection3D.mat removed: frame 2 is taken as it is
     f2 = rp + "Detections/Detection_F_2.mat"
     e2 = matfile.read_mat(f2)["frameInfo_k"]
@@ -726,17 +807,21 @@ def test_frame_parallel_reuses_frames_and_skips_movies(tmp_path):
     e2["x"] = x
     matfile.write_mat(f2, {"frameInfo_k": e2}, version="7.3")
     os.remove(rp + "Detection3D.mat")
-    (again,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    (again,) = run.run_detection_frame_parallel(
+        m, sigma=SIGMA_RUN, results_path=[rp], detection_method="lowSNR"
+    )
     assert np.asarray(_fp_entries(rp + "Detection3D.mat")[1]["x"])[0, 0] == 999.0
     assert np.asarray(again[1]["x"])[0, 0] == 999.0
     # Detection3D.mat exists: skipped
     stamp = os.path.getmtime(rp + "Detection3D.mat")
-    assert run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR") == [None]
+    assert run.run_detection_frame_parallel(
+        m, sigma=SIGMA_RUN, results_path=[rp], detection_method="lowSNR"
+    ) == [None]
     assert os.path.getmtime(rp + "Detection3D.mat") == stamp
     # overwrite: every frame detected again
     detect.clear_threshold_cache()
     (fresh,) = run.run_detection_frame_parallel(
-        m, SIGMA_RUN, [rp], detection_method="lowSNR", overwrite=True
+        m, sigma=SIGMA_RUN, results_path=[rp], detection_method="lowSNR", overwrite=True
     )
     assert np.array_equal(np.asarray(fresh[1]["x"]), np.asarray(first[1]["x"]))
     assert np.asarray(_fp_entries(rp + "Detection3D.mat")[1]["x"])[0, 0] != 999.0
@@ -763,7 +848,9 @@ def test_frame_parallel_keeps_a_detection3d_another_caller_wrote(tmp_path, monke
 
     monkeypatch.setattr(framework, "run_tasks", tasks_then_another_caller)
     detect.clear_threshold_cache()
-    (entries,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    (entries,) = run.run_detection_frame_parallel(
+        m, sigma=SIGMA_RUN, results_path=[rp], detection_method="lowSNR"
+    )
     assert len(entries) == 3
     with open(rp + "Detection3D.mat", "rb") as f:
         assert f.read() == b"another caller's file"
@@ -788,7 +875,9 @@ def test_frame_parallel_takes_over_a_stale_marker(tmp_path):
     old = time.time() - 600
     os.utime(marker, (old, old))
     detect.clear_threshold_cache()
-    (out,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    (out,) = run.run_detection_frame_parallel(
+        m, sigma=SIGMA_RUN, results_path=[rp], detection_method="lowSNR"
+    )
     assert len(out) == 3 and os.path.exists(rp + "Detection3D.mat")
     assert sorted(os.listdir(rp + "Detections")) == [f"Detection_F_{k}.mat" for k in (1, 2, 3)]
 
@@ -816,7 +905,9 @@ def test_frame_parallel_empty_frame_gets_the_empty_entry(tmp_path, monkeypatch):
 
     monkeypatch.setattr(detect, "point_source_detection", no_detections_in_frame_2)
     detect.clear_threshold_cache()
-    (entries,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    (entries,) = run.run_detection_frame_parallel(
+        m, sigma=SIGMA_RUN, results_path=[rp], detection_method="lowSNR"
+    )
     e = entries[1]
     assert np.asarray(e["x"]).shape == (0, 0) and np.asarray(e["isPSF"]).shape == (0, 0)
     assert np.array_equal(e["s"], SIGMA_RUN) and len(e["dRange"]) == 2
@@ -834,12 +925,14 @@ def test_frame_parallel_refuses_what_is_not_ported(tmp_path):
     m = _movie(tmp_path, frames=1)
     rp = [str(tmp_path / "R") + os.sep]
     with pytest.raises(NotImplementedError, match="XR_pointSourceDetection3D_1"):
-        run.run_detection_frame_parallel(m, SIGMA_RUN, rp)  # MATLAB's default method
+        run.run_detection_frame_parallel(m, sigma=SIGMA_RUN, results_path=rp)  # MATLAB's default
     for kw in ({"detection_method": "adaptive"}, {"detection_method": "original"},
                {"detection_method": "lowSNR", "window_size": [2, 2]},
-               {"detection_method": "lowSNR", "fit_mixtures": True}):  # fmt: skip
+               {"detection_method": "lowSNR", "fit_mixtures": True},
+               {"detection_method": "lowSNR", "remove_secondary_redundant": False},
+               {"detection_method": "lowSNR", "cell_mask": np.ones((2, 2))}):  # fmt: skip
         with pytest.raises(NotImplementedError):
-            run.run_detection_frame_parallel(m, SIGMA_RUN, rp, **kw)
+            run.run_detection_frame_parallel(m, sigma=SIGMA_RUN, results_path=rp, **kw)
     assert not os.path.exists(rp[0])
 
 

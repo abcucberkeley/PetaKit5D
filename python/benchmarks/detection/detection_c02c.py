@@ -31,7 +31,12 @@ def once() -> int:
         shutil.rmtree(rp)
     detect.clear_threshold_cache()
     (entries,) = run.run_detection_frame_parallel(
-        data, sigma, [rp], detection_method="lowSNR", background_correction=False, num_threads=T
+        data,
+        sigma=sigma,
+        results_path=[rp],
+        detection_method="lowSNR",
+        background_correction=False,
+        num_threads=T,
     )
     return sum(int(np.asarray(e["x"]).size) for e in entries)
 

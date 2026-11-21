@@ -31,6 +31,7 @@ THIRD_PARTY: dict[str, str] = {
     "pointDetection/deskewData.m": "its header names an outside author",
     "pointDetection/XR_loadConditionData3D.m": _CME_EDITED,
     "pointDetection/XR_runDetection3D.m": _CME_EDITED,
+    "pointDetection/XR_runDetection3D_frame_parallel.m": _CME_EDITED,
     "pointDetection/XR_runTrackProcessing3D.m": _CME,
     "pointDetection/XR_runTracking3D.m": _CME_EDITED,
     "pointDetection/rotateTracks3D.m": _CME_EDITED,
