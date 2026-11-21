@@ -147,10 +147,11 @@ where the two wheels' round medians overlap).
   (the FMA instruction, where MSVC's build calls the C library's `fma` for each tap: up to 20
   times as fast), the deconvolutions (2 to 2.6 times at 1 thread, 2 at 8), pocketfft's vector lines
   (MSVC transforms one line at a time), the resize kernels and the deskew.
-- **Slower with MinGW-w64:** the 3 x 3 x 3 median filter (5 times) and binary erosion (1.2),
-  whose GCC code is Linux's: GCC compiles the median network's 16-lane vectors into scalar
-  `minss` and `maxss`, while MSVC vectorizes the lane-by-lane loops it gets instead. A change to
-  those kernels would make Linux faster too (outside this record).
+- **Slower with MinGW-w64:** binary erosion (1.2), whose GCC code is Linux's. The 3 x 3 x 3
+  median filter was 5 times slower in this measurement: GCC had compiled its network's 16-lane
+  vectors into scalar `minss` and `maxss`, while MSVC vectorizes the lane-by-lane loops it gets
+  instead. Since then GCC's network runs on SSE's or AVX2's minimum and maximum instructions, on
+  Linux too (there 16 to 19 times as fast at 1 thread; not measured again on Windows).
 - **The detection fits:** even, but for the fits of amplitude and background alone at 1 thread
   (1.23), whose time is mostly the Anderson-Darling test: MinGW-w64's `erf` and `log` take 62 and
   29 ns a call at 64 bits, the UCRT's 18 and 4. The UCRT's would make those fits faster than

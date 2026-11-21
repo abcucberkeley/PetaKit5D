@@ -45,7 +45,6 @@ from petakit5d.testing.compare import (
     EXACT,
     FileTree,
     MArray,
-    Masks,
     MCell,
     MPlaceholder,
     MRef,
@@ -58,7 +57,6 @@ from petakit5d.testing.compare import (
     msize,
     scan_tree,
     to_mvalue,
-    uuid_masks,
     vhash,
 )
 
@@ -1077,7 +1075,9 @@ class Case:
         files = None
         if self.captures_files:
             rels, deleted = changed_files(before, snapshot(work))
-            files = scan_tree(work, rels, deleted=deleted, masks=Masks().plus(*uuid_masks(uuids)))
+            # names as written: the run's uuids are aligned with the reference's names when
+            # compared (compare.align_name), not masked here
+            files = scan_tree(work, rels, deleted=deleted)
         return PyResult(outs, err, etext, wlist, files, work, elapsed, raw, uuids)
 
     def map_outputs(self, outs: list) -> list:
