@@ -71,28 +71,44 @@ def write_tracked_features(
 
 @register(
     "XR_runTracking3D",
+    # third-party code: the port's own checks (accepts=), made from MATLAB's behaviour
+    # (tests/params/test_third_party_checks.py)
     Param(
         "data",
-        "@isstruct",
+        None,
         "Movies (the structure XR_loadConditionData3D returns).",
         convert="same",
+        accepts="struct",
     ),
     Param(
         "settings",
-        "@isstruct",
+        None,
         "Tracker settings (default: loadTrackSettings('Radius', [3 6], 'MaxGapLength', 2)).",
+        accepts="struct",
     ),
-    Param("Overwrite", "@islogical", "Track movies whose result exists again."),
-    Param("FileName", "@ischar", "Result file name."),
-    Param("Frames", "@isvector", "Frames to track (0-based; default all).", convert="index1"),
-    Param("DetectionFile", "@ischar", "Detection file name in the results folder."),
+    Param("Overwrite", None, "Track movies whose result exists again.", accepts="logical"),
+    Param("FileName", None, "Result file name.", accepts="char"),
+    Param(
+        "Frames",
+        None,
+        "Frames to track (0-based; default all).",
+        convert="index1",
+        accepts="vector",
+    ),
+    Param("DetectionFile", None, "Detection file name in the results folder.", accepts="char"),
     Param(
         "ResultsPath",
-        "@iscell",
+        None,
         "Results folder of each movie (default <source>/Analysis/).",
         matlab_default="arrayfun(@(i) [i.source 'Analysis' filesep], data, 'unif', 0)",
+        accepts="cell",
     ),
-    Param("ParallelMethod", "@ischar", "Accepted; movies are tracked in this process."),
+    Param(
+        "ParallelMethod",
+        None,
+        "Accepted; movies are tracked in this process.",
+        accepts="char",
+    ),
     task="C03",
 )
 def run_tracking(

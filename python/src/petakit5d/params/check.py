@@ -6,7 +6,8 @@ literals); the inputParser settings agree; and where the function has an mcc par
 string conversions and defaults agree with the spec (the command line follows them). The
 MATLAB side comes from a tree (the oracle tree on the cluster) or from a stored extract (CI).
 Of third-party MATLAB code only the interface is kept (params/provenance.py): its validators
-are withheld, and names, kinds, order and defaults are compared.
+are withheld, and names, kinds, order and defaults are compared; a spec gives the port's own
+check of such a parameter (``accepts=``), never a validator text.
 """
 
 from __future__ import annotations
@@ -171,6 +172,16 @@ def check_spec(spec: FunctionSpec, fn: MatlabFunction | None) -> list[str]:
         if p.matlab != m.name:
             out.append(f"{where}: MATLAB spells it {m.name!r}")
         out.extend(_check_kind(spec, p))
+        if m.withheld and p.validator:
+            out.append(
+                f"{where}: third-party code, whose validator texts the repository does not "
+                "keep: give the port's own check (accepts=) instead of a validator"
+            )
+        if p.accepts is not None and not m.withheld:
+            out.append(
+                f"{where}: accepts= is the port's own check of third-party code; here MATLAB's "
+                "validator is the check"
+            )
         if m.kind == "positional":
             # no inputParser or arguments block: MATLAB fills defaults by nargin
             if p.kind == "parameter":

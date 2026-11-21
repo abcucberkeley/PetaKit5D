@@ -206,7 +206,9 @@ def _spec(validator: str | None, *, mode_kw: bool = False, overwrite: bool = Fal
 def test_check_spec_compares_the_interface_of_third_party_code():
     outside = interface_only(_fake("pointDetection/llsmtools/XR_fake.m"))
     assert check_spec(_spec(None), outside) == []
-    assert check_spec(_spec("@ischar"), outside) == []  # validators are not compared
+    # validators are not compared, and a validator text there is refused
+    problems = check_spec(_spec("@ischar"), outside)
+    assert len(problems) == 2 and all("instead of a validator" in p for p in problems), problems
     problems = check_spec(_spec(None, overwrite=True), outside)
     assert len(problems) == 1 and "default True, MATLAB has false" in problems[0], problems
     problems = check_spec(_spec(None, mode_kw=True), outside)
@@ -393,5 +395,11 @@ def test_the_table_shows_no_validator_of_third_party_code(extract):
             matlab = row.split("`")[1]
             if "Python only" in row:
                 continue
-            assert cell == (WITHHELD if matlab in withheld else ""), (name, matlab)
+            if matlab not in withheld:
+                assert cell == "", (name, matlab)
+            else:  # the marker, with the port's own check where the spec has one
+                assert cell == WITHHELD or cell.startswith(f"{WITHHELD} the port's: `"), (
+                    name,
+                    matlab,
+                )
     assert THIRD_PARTY_FUNCTIONS <= set(sections)
