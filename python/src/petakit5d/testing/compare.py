@@ -23,6 +23,7 @@ import contextlib
 import contextvars
 import dataclasses
 import fnmatch
+import functools
 import hashlib
 import itertools
 import json
@@ -31,7 +32,7 @@ import os
 import re
 import struct
 import zlib
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -1207,6 +1208,7 @@ def from_descriptor(d: dict) -> MValue:
 # masks (volatile text)
 # ---------------------------------------------------------------------------------------------
 
+UUID_TAG = "<uuid>"
 UUID_RE = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 STAMP_RE = r"(?<!\d)(?:19|20)\d{12}(?!\d)"
 TIME_RE = (
@@ -1215,26 +1217,38 @@ TIME_RE = (
 )
 
 
-def uuid_masks(uuids) -> tuple[tuple[str, str], ...]:
-    """masks for the uuids a run made that UUID_RE does not take: on Windows get_uuid keeps the
-    first 4 characters (as MATLAB there, for long paths), which only the run's own list tells
-    from other names (embryo_2024, _0001)"""
-    out = []
-    for u in sorted(set(uuids)):
-        if u and not re.fullmatch(UUID_RE, u):
-            out.append((rf"(?<![0-9A-Za-z]){re.escape(u)}(?![0-9A-Za-z])", "<uuid>"))
-    return tuple(out)
+def short_uuids(uuids: Iterable[str]) -> tuple[str, ...]:
+    """the uuids of a run that UUID_RE does not take, distinct and sorted: on Windows get_uuid
+    keeps the first 4 characters (as MATLAB there, for long paths), which only the run's own
+    list tells from other names and values (embryo_2024, _0001, 1024)"""
+    return tuple(sorted({u for u in uuids if u and not re.fullmatch(UUID_RE, u)}))
+
+
+def uuid_masks(uuids: Iterable[str]) -> tuple[tuple[str, str], ...]:
+    """(regex, replacement) pairs that mask every whole-token occurrence of a run's short
+    uuids. Comparisons don't apply them, since a real value equal to a uuid would become
+    <uuid> too: they align the uuids with the reference (``align_text``), and try these only
+    against a value that a manifest keeps by its hash alone (``align_value``)"""
+    return tuple(
+        (rf"(?<![0-9A-Za-z]){re.escape(u)}(?![0-9A-Za-z])", UUID_TAG) for u in short_uuids(uuids)
+    )
 
 
 @dataclasses.dataclass(frozen=True)
 class Masks:
-    """text substitutions applied to both sides before comparing: (regex, replacement) pairs"""
+    """text substitutions applied to both sides before comparing: (regex, replacement) pairs.
+
+    ``uuids``: a run's own short uuids (``short_uuids``: Windows' 4 characters). ``text``
+    leaves them alone; a comparison aligns them with the reference, masking one only where the
+    reference has <uuid> at that place (``align_text``, ``align_value``, ``align_name``), so
+    that a real value equal to one compares as itself."""
 
     subs: tuple[tuple[str, str], ...] = (
-        (UUID_RE, "<uuid>"),
+        (UUID_RE, UUID_TAG),
         (STAMP_RE, "<timestamp>"),
         (TIME_RE, "<time>"),
     )
+    uuids: tuple[str, ...] = ()
 
     def text(self, s: str) -> str:
         for pat, rep in self.subs:
@@ -1242,7 +1256,11 @@ class Masks:
         return s
 
     def plus(self, *subs: tuple[str, str]) -> Masks:
-        return Masks(tuple(subs) + self.subs)
+        return Masks(tuple(subs) + self.subs, self.uuids)
+
+    def with_uuids(self, uuids: Iterable[str]) -> Masks:
+        """these masks with a run's short uuids added (to be aligned, not substituted)"""
+        return Masks(self.subs, short_uuids((*self.uuids, *uuids)))
 
     def with_paths(
         self, work: str | None = None, host: str | None = None, **roots: str | None
@@ -1260,7 +1278,7 @@ class Masks:
                 subs.append((re.escape(form), f"<{tag}>"))
         if host:
             subs.append((r"(?<![\w.-])" + re.escape(host) + r"(?![\w-])", "<host>"))
-        return Masks(tuple(subs) + self.subs)
+        return Masks(tuple(subs) + self.subs, self.uuids)
 
     def key(self) -> str:
         return hashlib.sha256(json.dumps(self.subs).encode()).hexdigest()[:16]
@@ -1299,6 +1317,254 @@ def mask_value(v: MValue, masks: Masks) -> MValue:
             v.key_type, v.value_type, mask_value(v.keys, masks), mask_value(v.values, masks)
         )
     return v
+
+
+# A run's short uuids are aligned with the reference instead of masked everywhere: a token of
+# the run's text equal to one is made <uuid> only where the reference's masked text has <uuid>
+# at that place (MATLAB's uuids, 36 characters on the reference platform, are masked by UUID_RE
+# wherever they are). So a real value equal to a uuid (a 1024 in parameters.json against the
+# uuid "1024") compares as itself on both sides, and the reference is never masked with the
+# run's uuids: a manifest's texts and values are compared as they are stored.
+
+ALIGN_CHOICES = 1024  # maskings tried against a reference known by its hash alone
+UUID_SUBSETS = 8  # up to this many uuids in one text or value: maskings of each subset tried
+NAME_AFTER = "_/\\="  # what precedes a uuid in the port's names: x_<uuid>.tif, tmp/<uuid>/, uuid=
+
+
+def _uuid_subsets(found: Iterable[str]) -> Iterator[tuple[str, ...]]:
+    """the proper, non-empty subsets of the distinct uuids found, smallest first (when there are
+    2 to UUID_SUBSETS of them)"""
+    distinct = sorted(set(found))
+    if 1 < len(distinct) <= UUID_SUBSETS:
+        for r in range(1, len(distinct)):
+            yield from itertools.combinations(distinct, r)
+
+
+def _uuid_alts(uuids: tuple[str, ...]) -> str:
+    return "|".join(re.escape(u) for u in sorted(uuids, key=len, reverse=True))
+
+
+@functools.lru_cache(maxsize=64)
+def _uuid_token_re(uuids: tuple[str, ...]) -> re.Pattern:
+    """whole-token occurrences of the uuids (not next to a letter or digit)"""
+    return re.compile(rf"(?<![0-9A-Za-z])(?:{_uuid_alts(uuids)})(?![0-9A-Za-z])")
+
+
+def _name_masks(uuids: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    """masks of the uuids' whole-token occurrences in names (after one of NAME_AFTER)"""
+    return ((rf"(?<=[_/\\=])(?:{_uuid_alts(uuids)})(?![0-9A-Za-z])", UUID_TAG),)
+
+
+def _uuids_fit(ref: str, act: str, uuids: tuple[str, ...]) -> bool:
+    """whether ``act`` is ``ref`` with each <uuid> of ``ref`` as <uuid> or one of the uuids"""
+    pieces = ref.split(UUID_TAG)
+    if not act.startswith(pieces[0]):
+        return False
+    pos = len(pieces[0])
+    alts = (UUID_TAG, *uuids)
+    for p in pieces[1:]:
+        fit = [u for u in alts if act.startswith(u, pos) and act.startswith(p, pos + len(u))]
+        if len(fit) > 1:
+            # uuids of several lengths, one a prefix of another (never get_uuid's): backtrack
+            alt = "(?:" + "|".join(re.escape(u) for u in alts) + ")"
+            return re.fullmatch(alt.join(re.escape(x) for x in pieces), act) is not None
+        if not fit:
+            return False
+        pos += len(fit[0]) + len(p)
+    return pos == len(act)
+
+
+def _masked_choices(
+    s: str, spans: Sequence[tuple[int, int]], budget: int = ALIGN_CHOICES
+) -> Iterator[str]:
+    """``s`` with some of ``spans`` made <uuid>: all of them, none, those in names (after one
+    of NAME_AFTER); those of some of the uuids, all or in names (when 2 to UUID_SUBSETS uuids
+    occur); then the choices that differ from all or from none in one span, two, ... (at most
+    ``budget``)"""
+    k = len(spans)
+
+    def build(sel: set[int]) -> str:
+        out, pos = [], 0
+        for i, (a, b) in enumerate(spans):
+            if i in sel:
+                out += [s[pos:a], UUID_TAG]
+                pos = b
+        return "".join(out) + s[pos:]
+
+    def selections() -> Iterator[set[int]]:
+        every = set(range(k))
+        yield every
+        if not k:
+            return
+        yield set()
+        named = {i for i, (a, _) in enumerate(spans) if a and s[a - 1] in NAME_AFTER}
+        yield named
+        vals = [s[a:b] for a, b in spans]
+        for t in _uuid_subsets(vals):
+            yield {i for i in every if vals[i] in t}
+            yield {i for i in named if vals[i] in t}
+        for d in range(1, k // 2 + 1):
+            for c in itertools.combinations(range(k), d):
+                yield every - set(c)
+                if 2 * d != k:
+                    yield set(c)
+
+    for sel in itertools.islice(selections(), budget):
+        yield build(sel)
+
+
+def align_text(
+    ref: str | None,
+    act: str,
+    uuids: Iterable[str],
+    same: Callable[[str], bool] | None = None,
+) -> str:
+    """``act``, a run's masked text, with its short uuids made <uuid> where ``ref``, the
+    reference's masked text, has <uuid> at that place, and nowhere else: a token equal to a
+    uuid elsewhere stays itself. Texts that differ beyond their uuids are aligned line by line
+    (for the report, which shows the first line that differs).
+
+    ``ref`` None: a manifest keeps only the reference's hash (a long text); ``same`` tests a
+    candidate against it, and the first masking of the uuid tokens (``_masked_choices``) that
+    passes is taken, else none."""
+    uuids = tuple(uuids)
+    if not uuids:
+        return act
+    if ref is None:
+        spans = [m.span() for m in _uuid_token_re(uuids).finditer(act)] if same else []
+        return next((c for c in _masked_choices(act, spans) if same(c)), act) if spans else act
+    if UUID_TAG not in ref or not any(u in act for u in uuids):
+        return act
+    if _uuids_fit(ref, act, uuids):
+        return ref
+    rl, al = ref.split("\n"), act.split("\n")
+    for i in range(min(len(rl), len(al))):
+        if UUID_TAG in rl[i] and _uuids_fit(rl[i], al[i], uuids):
+            al[i] = rl[i]
+    return "\n".join(al)
+
+
+def align_name(name: str, ref_names: Container[str], uuids: Iterable[str]) -> str:
+    """a run's masked name (of a file, or a JSON key) as the reference has it: the name itself
+    if the reference has it, else the first masking of its uuid tokens (``_masked_choices``)
+    that the reference has, else the name itself"""
+    uuids = tuple(uuids)
+    if not uuids or name in ref_names:
+        return name
+    spans = [m.span() for m in _uuid_token_re(uuids).finditer(name)]
+    return next((c for c in _masked_choices(name, spans) if c in ref_names), name)
+
+
+def _hash_alone(ref: MValue | None) -> str | None:
+    """the hash of a reference value that a manifest keeps by its hash alone, else None"""
+    if isinstance(ref, MHashed) or (isinstance(ref, MArray) and ref.data is None):
+        return ref._hash
+    return None
+
+
+def _tokens(v: MValue, tok: re.Pattern) -> set[str]:
+    """the uuid tokens that the char rows and strings of ``v`` hold"""
+    if isinstance(v, MArray):
+        if v.mclass == "char" and v.data is not None and v.is_char_row():
+            return set(tok.findall(v.text()))
+        return set()
+    if isinstance(v, MCell) and v.items is not None:
+        return set().union(*(_tokens(x, tok) for x in v.items))
+    if isinstance(v, MStruct) and v.items is not None:
+        return set().union(*(_tokens(x, tok) for el in v.items for x in el.values()))
+    if isinstance(v, MString) and v.items is not None:
+        return set().union(*(set(tok.findall(s)) for s in v.items if s is not None))
+    if isinstance(v, MObject) and v.value is not None:
+        return _tokens(v.value, tok)
+    if isinstance(v, MMap):
+        return _tokens(v.keys, tok) | _tokens(v.values, tok)
+    return set()
+
+
+def align_value(ref: MValue | None, act: MValue, uuids: Iterable[str]) -> MValue:
+    """``act``, a run's masked value, with its short uuids aligned with ``ref`` in its char rows
+    and strings (``align_text``). Against a value known by its hash alone, the first whose hash
+    is the reference's of: the value as it is, with all its uuid tokens masked, those in names,
+    those of each subset of its uuids, all or in names (a char row: each masking of
+    ``_masked_choices``)"""
+    uuids = tuple(uuids)
+    if not uuids:
+        return act
+    if isinstance(ref, MObject) and not isinstance(act, MObject):
+        ref = ref.value  # as _cmp compares them
+    h = _hash_alone(ref)
+    row = isinstance(act, MArray) and act.mclass == "char" and act.data is not None
+    row = row and act.is_char_row()
+    if h is not None:
+        found = _tokens(act, _uuid_token_re(uuids))
+        if not found:
+            return act
+        if row:
+            t = act.text()
+            m = align_text(None, t, uuids, lambda c: vhash(mchar(c)) == h)
+            return act if m == t else mchar(m)
+        subs = [uuid_masks(uuids), _name_masks(uuids)]
+        for t in _uuid_subsets(found):
+            subs += [uuid_masks(t), _name_masks(t)]
+        cands = (mask_value(act, Masks(s)) for s in subs)
+        return next((c for c in itertools.chain((act,), cands) if vhash(c) == h), act)
+    if row:
+        rt = None
+        if isinstance(ref, MArray) and ref.data is not None and ref.is_char_row():
+            rt = ref.text()
+        t = act.text()
+        m = align_text(rt, t, uuids)
+        return act if m == t else mchar(m)
+    if isinstance(act, MCell) and act.items is not None:
+        ri = ref.items if isinstance(ref, MCell) and ref.size == act.size else None
+        items = [align_value(ri[i] if ri else None, x, uuids) for i, x in enumerate(act.items)]
+        same = all(a is b for a, b in zip(items, act.items, strict=True))
+        return act if same else MCell(act.size, items)
+    if isinstance(act, MStruct) and act.items is not None:
+        ri = ref.items if isinstance(ref, MStruct) and ref.size == act.size else None
+        items = [
+            {f: align_value(ri[i].get(f) if ri else None, x, uuids) for f, x in el.items()}
+            for i, el in enumerate(act.items)
+        ]
+        same = all(items[i][f] is act.items[i][f] for i in range(len(items)) for f in act.fields)
+        return act if same else MStruct(act.size, act.fields, items)
+    if isinstance(act, MString) and act.items is not None:
+        ri = ref.items if isinstance(ref, MString) and ref.size == act.size else None
+        items = [
+            s if s is None or not ri or ri[i] is None else align_text(ri[i], s, uuids)
+            for i, s in enumerate(act.items)
+        ]
+        return act if items == act.items else MString(act.size, items)
+    if isinstance(act, MObject) and act.value is not None:
+        nv = align_value(ref.value if isinstance(ref, MObject) else None, act.value, uuids)
+        return act if nv is act.value else MObject(act.mclass, nv, act.text)
+    if isinstance(act, MMap):
+        rk, rv = (ref.keys, ref.values) if isinstance(ref, MMap) else (None, None)
+        k, v = align_value(rk, act.keys, uuids), align_value(rv, act.values, uuids)
+        same = k is act.keys and v is act.values
+        return act if same else MMap(act.key_type, act.value_type, k, v)
+    return act
+
+
+def align_json(ref: Any, act: Any, uuids: Iterable[str]) -> Any:
+    """a run's parsed JSON with its short uuids aligned with the reference's: strings by
+    ``align_text``, object keys by ``align_name``"""
+    uuids = tuple(uuids)
+    if not uuids:
+        return act
+    if isinstance(act, str):
+        return align_text(ref, act, uuids) if isinstance(ref, str) else act
+    if isinstance(act, list):
+        rl = ref if isinstance(ref, list) else []
+        return [align_json(rl[i] if i < len(rl) else None, x, uuids) for i, x in enumerate(act)]
+    if isinstance(act, dict):
+        rd = ref if isinstance(ref, dict) else {}
+        out = {}
+        for k, v in act.items():
+            k = align_name(k, rd, uuids)
+            out[k] = align_json(rd.get(k), v, uuids)
+        return out
+    return act
 
 
 def drop_fields(v: MValue, names: Iterable[str]) -> MValue:
@@ -1510,13 +1776,15 @@ def compare(
     masks: Masks | None = None,
     act_masks: Masks | None = None,
 ) -> Report:
-    """compare a Python value (converted with ``to_mvalue(act, like=ref)``) with a MATLAB value"""
+    """compare a Python value (converted with ``to_mvalue(act, like=ref)``) with a MATLAB value;
+    the uuids of ``act_masks`` (a run's) are aligned with the reference (``align_value``)"""
     rep = Report()
     a = to_mvalue(act, like=ref)
     if masks is not None:
         ref = mask_value(ref, masks)
     if act_masks is not None or masks is not None:
-        a = mask_value(a, act_masks if act_masks is not None else masks)
+        am = act_masks if act_masks is not None else masks
+        a = align_value(ref, mask_value(a, am), am.uuids)
     _cmp(ref, a, spec, path, rep)
     return rep
 
@@ -2681,17 +2949,25 @@ def _png_payload(data: bytes) -> bytes:
     return b"".join(out)
 
 
-class _Side:
-    """lazy access to one file of one side, with that side's masks"""
+def _sha_text(t: str) -> str:
+    return hashlib.sha256(t.encode("utf-8")).hexdigest()
 
-    def __init__(self, item: FileItem, masks: Masks, spec: TreeSpec):
-        self.it, self.masks, self.spec = item, masks, spec
+
+class _Side:
+    """lazy access to one file of one side, with that side's masks; ``guide``: the reference's
+    side of the same file, with which the run's short uuids (``masks.uuids``) are aligned"""
+
+    def __init__(self, item: FileItem, masks: Masks, spec: TreeSpec, guide: _Side | None = None):
+        self.it, self.masks, self.spec, self.guide = item, masks, spec, guide
         self._cache: dict[str, Any] = {}
 
     def _get(self, key: str, fn):
         if key not in self._cache:
             self._cache[key] = fn()
         return self._cache[key]
+
+    def _aligns(self) -> bool:
+        return bool(self.masks.uuids) and self.guide is not None
 
     @property
     def has_file(self) -> bool:
@@ -2720,16 +2996,28 @@ class _Side:
         return self._get("sha", lambda: sha256_file(self.it.path))
 
     def text(self) -> str | None:
+        """the text with this side's masks, a run's short uuids aligned with the guide's text
+        (or with its hash, where a manifest keeps no more)"""
         if not self.has_file:
             return self.d("text")
-        return self._get(
-            "text", lambda: self.masks.text(self.it.path.read_bytes().decode("utf-8", "replace"))
-        )
+
+        def load():
+            t = self.masks.text(self.it.path.read_bytes().decode("utf-8", "replace"))
+            if self._aligns():
+                g = self.guide
+
+                def same(c: str) -> bool:  # against a manifest's hash of a long text
+                    return _sha_text(c) == g.text_sha()
+
+                t = align_text(g.text(), t, self.masks.uuids, same)
+            return t
+
+        return self._get("text", load)
 
     def text_sha(self) -> str:
         if not self.has_file:
             return self.d("sha")
-        return self._get("tsha", lambda: hashlib.sha256(self.text().encode("utf-8")).hexdigest())
+        return self._get("tsha", lambda: _sha_text(self.text()))
 
     def png_sha(self) -> str:
         if not self.has_file:
@@ -2803,7 +3091,14 @@ class _Side:
             if isinstance(v, MStruct) and self.spec.ignore_vars:
                 keep = [f for f in v.fields if f not in self.spec.ignore_vars]
                 v = MStruct(v.size, keep, [{f: el[f] for f in keep} for el in v.items])
-            return mask_value(drop_fields(v, self.spec.ignore_fields), self.masks)
+            v = mask_value(drop_fields(v, self.spec.ignore_fields), self.masks)
+            if self._aligns():
+                try:
+                    g = self.guide.mat()
+                except Exception:  # not a MAT-file there: compared as bytes, nothing to align
+                    g = None
+                v = align_value(g, v, self.masks.uuids)
+            return v
 
         return self._get("mat", load)
 
@@ -2824,14 +3119,19 @@ class _Side:
     def zarr_meta(self) -> dict[str, str]:
         if not self.has_file:
             return self.d("meta", {})
-        return self._get(
-            "zmeta",
+
+        def load():
             # cpp-zarr writes its JSON in text mode, with CRLF line ends on Windows
-            lambda: {
+            meta = {
                 k: self.masks.text(v.decode("utf-8", "replace").replace("\r\n", "\n"))
                 for k, v in _zarr_parts(self.it.path)[0].items()
-            },
-        )
+            }
+            if self._aligns():
+                g = self.guide.zarr_meta()
+                meta = {k: align_text(g.get(k), t, self.masks.uuids) for k, t in meta.items()}
+            return meta
+
+        return self._get("zmeta", load)
 
     def zarr_chunks(self) -> tuple[int, str]:
         if not self.has_file:
@@ -2902,11 +3202,11 @@ def compare_trees(
     rep = Report()
     rm = (ref_masks or Masks()).plus(*spec.masks)
     am = (act_masks or Masks()).plus(*spec.masks)
-    # each side's names through its own masks: a run's short uuids (Windows) mask its names
-    # when they are scanned, and are in both masks, so a reference name with a token equal to
-    # one (Iter_0000 against the uuid "0000") is masked the same way (masks are idempotent)
+    # each side's names through its own masks; a run's short uuids (Windows) are aligned with
+    # the reference's names (align_name): a token equal to one is masked only where the
+    # reference has <uuid> there (Iter_0000 against the uuid "0000" stays itself)
     ritems = _items_by_masked_name(ref.items, rm)
-    aitems = _items_by_masked_name(act.items, am)
+    aitems = _items_by_masked_name(act.items, am, ritems)
     rnames = {n for n in ritems if not any(re.search(p, n) for p in spec.ignore)}
     anames = {n for n in aitems if not any(re.search(p, n) for p in spec.ignore)}
     for n in sorted(rnames - anames):
@@ -2914,6 +3214,7 @@ def compare_trees(
         rep.add(f"{path}/{n}", "missing", f"MATLAB wrote this {kinds}, Python did not")
     for n in sorted(anames - rnames):
         rep.add(f"{path}/{n}", "extra", "Python wrote this, MATLAB did not")
+    # removed files were there before the call: their names hold no uuid of the run
     rdel = sorted(normalize_name(x, rm) for x in ref.deleted)
     adel = sorted(normalize_name(x, am) for x in act.deleted)
     if rdel != adel:
@@ -2930,9 +3231,10 @@ def compare_trees(
             )
             continue
         for r_it, a_it in zip(ri, ai, strict=True):
+            r_side = _Side(r_it, rm, spec)
             _cmp_file(
-                _Side(r_it, rm, spec),
-                _Side(a_it, am, spec),
+                r_side,
+                _Side(a_it, am, spec, guide=r_side),
                 spec.spec_for(n),
                 spec,
                 f"{path}/{n}",
@@ -2942,11 +3244,16 @@ def compare_trees(
 
 
 def _items_by_masked_name(
-    items: dict[str, list[FileItem]], masks: Masks
+    items: dict[str, list[FileItem]], masks: Masks, ref_names: Container[str] | None = None
 ) -> dict[str, list[FileItem]]:
+    """the items by their masked names; with ``ref_names`` (the reference's), the run's short
+    uuids of ``masks`` aligned with them"""
     out: dict[str, list[FileItem]] = {}
     for n, its in items.items():
-        out.setdefault(normalize_name(n, masks), []).extend(its)
+        m = normalize_name(n, masks)
+        if ref_names is not None:
+            m = align_name(m, ref_names, masks.uuids)
+        out.setdefault(m, []).extend(its)
     return out
 
 
@@ -2993,7 +3300,7 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
             _cmp_zarr_layouts(r, a, rz, az, vspec, spec, path, rep)
             return
         for k in sorted(set(rmeta) | set(ameta)):
-            _cmp_zarr_meta(rmeta.get(k), ameta.get(k), f"{path}/{k}", rep)
+            _cmp_zarr_meta(rmeta.get(k), ameta.get(k), f"{path}/{k}", rep, a.masks.uuids)
         (rn, rh), (an, ah) = r.zarr_chunks(), a.zarr_chunks()
         if rh != ah:
             line = f"chunk files differ: MATLAB {rn}, Python {an}"
@@ -3038,6 +3345,9 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
                 rj, aj = json.loads(rt), json.loads(at)
             except ValueError:
                 rj = aj = None
+            else:
+                # texts that differ in more than their uuids (their format): by content
+                aj = align_json(rj, aj, a.masks.uuids)
             if rj is not None or aj is not None:
                 for f in spec.ignore_fields:
                     rj, aj = _drop_json(rj, f), _drop_json(aj, f)
@@ -3075,15 +3385,19 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
         rep.add(path, "bytes", f"bytes differ: MATLAB {r.sha()[:16]}, Python {a.sha()[:16]}")
 
 
-def _cmp_zarr_meta(rt: str | None, at: str | None, path: str, rep: Report) -> None:
+def _cmp_zarr_meta(
+    rt: str | None, at: str | None, path: str, rep: Report, uuids: Sequence[str] = ()
+) -> None:
     """a zarr metadata file (.zarray, .zattrs, .zgroup, zarr.json) by its JSON: a text that
-    differs only in format (spacing, key order: the writer's layout) is a note"""
+    differs only in format (spacing, key order: the writer's layout) is a note; ``uuids``: the
+    run's short uuids, aligned with the reference's JSON"""
     if rt == at:
         return
     parsed = None
     if rt is not None and at is not None:
         with contextlib.suppress(ValueError):
-            parsed = (json.loads(rt), json.loads(at))
+            rj = json.loads(rt)
+            parsed = (rj, align_json(rj, json.loads(at), uuids))
     if parsed is None:
         rep.add(path, "meta", _text_diff(rt, at))
     elif parsed[0] == parsed[1]:
@@ -3177,7 +3491,7 @@ def _cmp_zarr_layouts(
         rep.add(f"{path}/.zarray", "meta", *lines)
     rmeta, ameta = r.zarr_meta(), a.zarr_meta()
     for k in sorted((set(rmeta) | set(ameta)) - {".zarray"}):
-        _cmp_zarr_meta(rmeta.get(k), ameta.get(k), f"{path}/{k}", rep)
+        _cmp_zarr_meta(rmeta.get(k), ameta.get(k), f"{path}/{k}", rep, a.masks.uuids)
     n = len(az["shape"])
     rc, ac = r.chunk_names(), a.chunk_names()
     if rc is not None and ac is not None:

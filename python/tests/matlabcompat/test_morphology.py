@@ -1124,3 +1124,142 @@ def test_single_median_network_equals_the_selection():
     p = np.pad(a, 1, mode="symmetric")
     win = np.lib.stride_tricks.sliding_window_view(p, (3, 3, 3)).reshape(a.shape + (27,))
     assert np.array_equal(net, np.sort(win, axis=-1)[..., 13])
+
+
+# the selection network of the 3 x 3 x 3 single medians, in each instruction set
+
+
+def same_bits(a, b) -> bool:
+    a, b = np.asarray(a), np.asarray(b)
+    assert a.dtype == b.dtype and a.shape == b.shape, (a.dtype, a.shape, b.dtype, b.shape)
+    return np.array_equal(
+        np.ascontiguousarray(a).view(np.uint8), np.ascontiguousarray(b).view(np.uint8)
+    )
+
+
+def median27_data(rng, shape) -> np.ndarray:
+    """single values the network takes (no NaN, no -0): normal values and small integers (ties,
+    +0), with both infinities, subnormals of both signs and the largest finite values"""
+    a = (rng.standard_normal(shape) * 100).astype(np.float32)
+    ties = rng.random(shape) < 0.3
+    a[ties] = rng.integers(-3, 4, int(ties.sum())).astype(np.float32)
+    special = np.array(
+        [np.inf, -np.inf, 0.0, 1e-45, -1e-45, 1e-39, 3.4028235e38, -3.4028235e38], np.float32
+    )
+    k = rng.integers(0, a.size, a.size // 5)
+    a.reshape(-1)[k] = special[rng.integers(0, special.size, k.size)]
+    return a
+
+
+def median27_ref(p: np.ndarray) -> np.ndarray:
+    """the 14th smallest of each 3 x 3 x 3 window of a padded volume (sorted windows: without NaN
+    and -0, equal values have equal bits)"""
+    win = np.lib.stride_tricks.sliding_window_view(p, (3, 3, 3))
+    return np.sort(win.reshape(win.shape[:3] + (27,)), axis=-1)[..., 13]
+
+
+def median27_room(p: np.ndarray, fill: float) -> np.ndarray:
+    """p in a buffer with the network's 16 floats of room after it, set to fill"""
+    buf = np.full(p.size + 16, fill, dtype=np.float32)
+    buf[: p.size] = p.reshape(-1)
+    return buf[: p.size].reshape(p.shape)
+
+
+def test_median_network_gives_the_selection_in_every_instruction_set():
+    """median27_single and median27_symmetric_single in each instruction set of the CPU (SSE and
+    AVX2 on x86-64) give the 14th smallest of every window, bit for bit: lines of 1 to 33 voxels
+    and longer (each tail of the passes of 4, 8 and 16 voxels), with ties, infinities, subnormals
+    and the largest values; NaN in the room after P changes nothing (the lanes past a line's end
+    are dropped), and nothing is written past out"""
+    from petakit5d import _ext
+
+    morph = _ext.load("morph")
+    rng = np.random.default_rng(7)
+    for nx in [*range(1, 34), 47, 64]:
+        shape = (2 + nx % 3, 1 + nx % 4, nx)
+        a = median27_data(rng, shape)
+        p = np.pad(a, 1, mode="symmetric")
+        ref = median27_ref(p)
+        pv = median27_room(p, np.nan)
+        for isa in range(morph.median27_best_isa() + 1):
+            for symmetric in (False, True):
+                buf = np.full(ref.size + 16, -1.0, dtype=np.float32)
+                out = buf[: ref.size].reshape(shape)
+                if symmetric:
+                    assert morph.median27_symmetric_single(a, out, 2, isa)
+                else:
+                    assert morph.median27_single(pv, out, 2, isa)
+                assert same_bits(out, ref), (nx, isa, symmetric)
+                assert (buf[ref.size :] == -1.0).all(), (nx, isa, symmetric)
+
+
+def test_median_network_equals_the_order_filter_in_every_instruction_set():
+    """the network against the general order filter (nth_element) in each instruction set and at
+    several thread counts, and medfilt3 with it (the best set)"""
+    from petakit5d import _ext
+
+    morph = _ext.load("morph")
+    a = median27_data(np.random.default_rng(8), (9, 21, 37))
+    p = np.ascontiguousarray(np.pad(a, 1, mode="symmetric"))
+    ref = np.empty(a.shape, dtype=np.float32)
+    morph.order_filter_single(p, ref, 3, 3, 3, 13, 1)
+    for isa in range(morph.median27_best_isa() + 1):
+        for t in (1, 3, 8):
+            out = np.empty(a.shape, dtype=np.float32)
+            assert morph.median27_symmetric_single(a, out, t, isa)
+            assert same_bits(out, ref), (isa, t)
+            out = np.empty(a.shape, dtype=np.float32)
+            assert morph.median27_single(median27_room(p, 0.0), out, t, isa)
+            assert same_bits(out, ref), (isa, t)
+    assert same_bits(M.medfilt3(a), ref)
+    assert same_bits(M.medfilt3(a, (3, 3, 3), "zeros"), median27_ref(np.pad(a, 1)))
+
+
+@pytest.mark.parametrize("bad", ["nan", "matlab_nan", "-0"])
+def test_median_network_leaves_nan_and_negative_zero_to_the_order_filter(bad):
+    """a volume with NaN or -0: the network refuses it in every instruction set (False, out
+    untouched), and medfilt3 gives the order filter's result (a window's first NaN in MATLAB's
+    order, a zero median +0)"""
+    from petakit5d import _ext
+    from petakit5d.core.dtypes import NAN
+
+    morph = _ext.load("morph")
+    a = median27_data(np.random.default_rng(9), (5, 6, 19))
+    a[2, 3, 11] = {"nan": np.float32(np.nan), "matlab_nan": np.float32(NAN), "-0": -0.0}[bad]
+    p = np.ascontiguousarray(np.pad(a, 1, mode="symmetric"))
+    for isa in range(morph.median27_best_isa() + 1):
+        out = np.full(a.shape, 7.0, dtype=np.float32)
+        assert not morph.median27_symmetric_single(a, out, 2, isa)
+        assert not morph.median27_single(median27_room(p, 0.0), out, 2, isa)
+        assert (out == 7.0).all()
+    ref = np.empty(a.shape, dtype=np.float32)
+    morph.order_filter_single(p, ref, 3, 3, 3, 13, 2)
+    assert same_bits(M.medfilt3(a), ref)
+
+
+def test_median_network_runs_avx2_where_the_cpu_has_it():
+    """the network's best instruction set on x86-64 Linux: AVX2 where the CPU (and the kernel)
+    have it"""
+    import platform
+    import sys
+
+    from petakit5d import _ext
+
+    if sys.platform != "linux" or platform.machine() != "x86_64":
+        pytest.skip("the CPU's flags are read from /proc/cpuinfo of x86-64 Linux")
+    with open("/proc/cpuinfo") as f:
+        flags = next((ln.split(":", 1)[1].split() for ln in f if ln.startswith("flags")), [])
+    assert _ext.load("morph").median27_best_isa() == (1 if "avx2" in flags else 0)
+
+
+def test_median_network_refuses_an_instruction_set_the_cpu_lacks():
+    from petakit5d import _ext
+
+    morph = _ext.load("morph")
+    a = np.ones((3, 4, 5), dtype=np.float32)
+    out = np.empty_like(a)
+    beyond = morph.median27_best_isa() + 1
+    with pytest.raises(ValueError):
+        morph.median27_symmetric_single(a, out, 1, beyond)
+    with pytest.raises(ValueError):
+        morph.median27_single(median27_room(np.pad(a, 1), 0.0), out, 1, beyond)
