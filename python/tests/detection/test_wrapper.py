@@ -577,12 +577,15 @@ def test_tracking_folders_after_a_one_frame_movie(tmp_path, calls):
     wrapper.run_detection_tracking(d, sigma=((1.3, 1.5),), parallel_method="none")
     got = [(c[1][0]["source"], c[2]["results_path"]) for c in calls if c[0] in TRACKING]
     assert got == [(d[1].source, [paths[1]])] * 3
+    # the rotation of reversed scans by the mirrored angle (W20) unless matlab_quirks
+    assert [c[2]["matlab_quirks"] for c in calls if c[0] == "rotate_tracks"] == [False]
     calls.clear()
     # MATLAB passes the folders of all movies: its first (only) movie gets the first folder
     wrapper.run_detection_tracking(d, sigma=((1.3, 1.5),), parallel_method="none",
                                    matlab_quirks=True)  # fmt: skip
     got = [(c[1][0]["source"], c[2]["results_path"]) for c in calls if c[0] in TRACKING]
     assert got == [(d[1].source, paths)] * 3
+    assert [c[2]["matlab_quirks"] for c in calls if c[0] == "rotate_tracks"] == [True]
 
 
 def test_reversed_scans_deskewed_in_their_direction(tmp_path, calls, monkeypatch):

@@ -595,7 +595,104 @@ def _case(kind: str) -> Case:
     )
 
 
-CASES = [_case("designed"), _case("compound")]
+# -- reversed scans (docs/parity/detection.md W20) --------------------------------------------
+
+ROT_SIZE = (16, 40, 56)  # (z, y, x) of the small condition's frames
+
+
+def make_rot_condition(folder) -> None:
+    """a small condition for the rotation alone: two frames of both channels, raw and DS"""
+    from pathlib import Path
+
+    ex = Path(folder) / EXPERIMENT
+    vol = np.full(ROT_SIZE, 100, dtype=np.uint16)
+    for c in (1, 2):
+        (ex / f"ch{c}" / "DS").mkdir(parents=True, exist_ok=True)
+        for f in (1, 2):
+            synth.write_tiff(ex / f"ch{c}" / frame_name(c, f), vol)
+            synth.write_tiff(ex / f"ch{c}" / "DS" / frame_name(c, f), vol)
+    (ex / "ch1" / "Analysis").mkdir(parents=True, exist_ok=True)
+    with open(ex / "probe_Settings.txt", "w", newline="\n") as fh:
+        fh.write('Camera type = "Orca4.0"\n')
+
+
+@functools.lru_cache(maxsize=1)
+def rot_tracks():
+    """processed tracks for the rotation: two channels, five frames, a start buffer, an end
+    buffer or none, positions across the small volume"""
+    from petakit5d.io.matfile import StructArray
+
+    rng = np.random.default_rng(31)
+    nz, ny, nx = ROT_SIZE
+
+    def pos(k):
+        return {
+            "x": 1 + rng.random((2, k)) * (nx - 1),
+            "y": 1 + rng.random((2, k)) * (ny - 1),
+            "z": 1 + rng.random((2, k)) * (nz - 1),
+        }
+
+    rows = []
+    for i in range(3):
+        tr = {"t": np.arange(0.0, 10.0, 2.0).reshape(1, -1), **pos(5), "A": rng.random((2, 5))}
+        tr["startBuffer"] = {"t": np.array([[-6.0, -4.0, -2.0]]), **pos(3)}
+        tr["endBuffer"] = (
+            np.zeros((0, 0)) if i == 1 else {"t": np.array([[10.0, 12.0, 14.0]]), **pos(3)}
+        )
+        tr["catIdx"] = float(i + 1)
+        rows.append(tr)
+    return StructArray((1, 3), tuple(rows[0]), rows)
+
+
+def rot_data(cond, reversed_: bool) -> dict:
+    ex = os.path.join(str(cond), EXPERIMENT)
+    ds = [sorted(glob.glob(os.path.join(ex, f"ch{c}", "DS", "*.tif"))) for c in (1, 2)]
+    return {
+        "source": os.path.join(ex, "ch1") + os.sep,
+        "framePathsDS": [np.array(p, dtype=object).reshape(-1, 1) for p in ds],
+        "angle": 31.5,
+        "zAniso": Z_ANISO,
+        "objectiveScan": False,
+        "reversed": reversed_,
+    }
+
+
+def _py_rotate_reversed(cond):
+    """MATLAB's output (matlab_quirks): rotateTracks3D does not read 'reversed'"""
+    from petakit5d.detection.processing import rotate_tracks
+    from petakit5d.io.matfile import write_mat
+
+    data = rot_data(cond, True)
+    rp = data["source"] + "Analysis" + os.sep
+    write_mat(rp + "ProcessedTracks.mat", {"tracks": rot_tracks()}, version="7.3")
+    rotate_tracks(data, overwrite=True, results_path=[rp], matlab_quirks=True)
+
+
+ROT_REVERSED = Case(
+    "rotate.reversed",
+    code=(
+        CLEAR
+        + "rt = in{1}; ex = [rt '"
+        + EXPERIMENT
+        + "' filesep]; ana = [ex 'ch1' filesep 'Analysis' filesep]; tracks = in{2}; "
+        "save([ana 'ProcessedTracks.mat'], 'tracks', '-v7.3'); "
+        "data = XR_loadConditionData3D(ex, {'ch1', 'ch2'}, {'gfp', 'rfp'}); data.reversed = true; "
+        "rotateTracks3D(data, 'Overwrite', true, 'Crop', false, 'ResultsPath', {ana}); out = {};"
+    ),
+    args=[InPath("cond"), In("tracks")],
+    nargout=0,
+    python=_py_rotate_reversed,
+    py_args=[InPath("cond")],
+    inputs={
+        "cond": Tree(make_rot_condition, "cond"),
+        "tracks": Value(lambda: _mstruct(rot_tracks())),
+    },
+    tree=tree_spec(ignore=(r"ProcessedTracks\.mat$",)),
+)
+
+
+RUN_CASES = [_case("designed"), _case("compound")]
+CASES = [*RUN_CASES, ROT_REVERSED]
 
 
 @oracle.parametrize(CASES)
@@ -603,7 +700,7 @@ def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
 
 
-@pytest.mark.parametrize("case", CASES, ids=[c.id for c in CASES])
+@pytest.mark.parametrize("case", RUN_CASES, ids=[c.id for c in RUN_CASES])
 def test_amira_on_matlab_tracks(case):
     """the Amira writer on MATLAB's processed tracks of a case gives MATLAB's Amira files byte
     for byte (needs the golden store: MATLAB's files)"""
@@ -693,7 +790,10 @@ def test_the_wrappers_stages(tmp_path):
             results_path=[rp],
             parallel_method=method,
         )
-    wrapper._call("rotate_tracks", data, overwrite=False, crop=False, results_path=[rp])
+    for q in (False, True):
+        wrapper._call(
+            "rotate_tracks", data, overwrite=False, crop=False, results_path=[rp], matlab_quirks=q
+        )
     assert (tmp_path / "ProcessedTracks.mat").read_bytes() == b"kept"
 
 
@@ -705,11 +805,13 @@ def _same(u, v) -> bool:
     return a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
 
 
+@pytest.mark.parametrize("reversed_", [False, True])
 @pytest.mark.parametrize("n", [0, 1, 2, 3])
-def test_rotated_tracks_file(tmp_path, n):
+def test_rotated_tracks_file(tmp_path, n, reversed_):
     """RotatedTracks.mat: ``rotated_tracks`` of the processed tracks, ``processingInfo`` left
     out; two or more tracks are rotated in a copy of the file (a struct array of references),
-    one track (a scalar struct) and none the plain way, and both read back alike"""
+    one track (a scalar struct) and none the plain way, and both read back alike, a reversed
+    scan by the mirrored angle on both ways"""
     from petakit5d.detection import processing as P
     from petakit5d.detection.processing import rotate_tracks, rotated_tracks
     from petakit5d.io.matfile import StructArray, read_mat, write_mat
@@ -745,7 +847,7 @@ def test_rotated_tracks_file(tmp_path, n):
         "angle": 31.5,
         "zAniso": 2.5,
         "objectiveScan": False,
-        "reversed": False,
+        "reversed": reversed_,
     }
     assert P._has_tracks_struct(rp + "ProcessedTracks.mat") == (n > 1)  # the path taken
     rotate_tracks(data, results_path=[rp])
@@ -755,13 +857,132 @@ def test_rotated_tracks_file(tmp_path, n):
     got = [got] if isinstance(got, dict) else list(got)
     pt = read_mat(rp + "ProcessedTracks.mat", "tracks")["tracks"]
     pt = [pt] if isinstance(pt, dict) else list(pt)
-    want = rotated_tracks(pt, (9, 20, 31), 31.5, 2.5)
+    want = rotated_tracks(pt, (9, 20, 31), 31.5, 2.5, mirrored=reversed_)
     assert len(got) == n
     assert all(_same(g, w) for g, w in zip(got, want, strict=True))
     if n:
         assert "Y" in got[0]["endBuffer"] and "Y" not in got[0]["startBuffer"]
     else:  # no tracks: an empty struct array of the processing's fields
         assert out["tracks"].shape == (1, 0) and out["tracks"].fields == P.TRACK_FIELDS
+
+
+REV_BLOBS = ((20, 6, 6), (30, 12, 9), (40, 18, 12), (26, 24, 15), (36, 30, 18), (46, 36, 20))
+
+
+def _blob_scan() -> np.ndarray:
+    """a raw stage scan (z, y, x) of Gaussian blobs at REV_BLOBS (x, y, z, 1-based), one blob per
+    y row, on a background of 100 (the reverse probes' scan)"""
+    z, y, x = np.meshgrid(np.arange(1, 25), np.arange(1, 45), np.arange(1, 65), indexing="ij")
+    v = np.full(z.shape, 100.0)
+    for bx, by, bz in REV_BLOBS:
+        v += 1000 * np.exp(-((x - bx) ** 2 + (y - by) ** 2) / (2 * 1.3**2) - (z - bz) ** 2 / 2)
+    return mround(v).astype(np.uint16)
+
+
+def _centroids(vol, rows) -> np.ndarray:
+    """per y row the blob's centroid (x, y, z, 1-based): the brightest voxel within 2 rows, then
+    the background-subtracted voxels within 3 voxels of it above 15% of its value"""
+    V = np.asarray(vol, dtype=np.float64)  # (z, y, x)
+    bg = np.median(V)
+    out = []
+    for r in rows:
+        lo, hi = max(r - 3, 0), min(r + 2, V.shape[1])
+        S = V[:, lo:hi, :]
+        idx = list(np.unravel_index(int(np.argmax(S)), S.shape))
+        idx[1] += lo
+        sl = tuple(slice(max(i - 3, 0), min(i + 4, n)) for i, n in zip(idx, V.shape, strict=True))
+        W = V[sl] - bg
+        W[W < 0.15 * W.max()] = 0
+        g = np.meshgrid(*(np.arange(s.start, s.stop) + 1.0 for s in sl), indexing="ij")
+        w = W.sum()
+        out.append(
+            [float((g[2] * W).sum() / w), float((g[1] * W).sum() / w), float((g[0] * W).sum() / w)]
+        )
+    return np.array(out)
+
+
+@pytest.mark.parametrize("quirks", [False, True])
+def test_reversed_scan_rotation(tmp_path, quirks):
+    """a stage scan deskewed in its direction and rotated by deskew_rotate_file (bit for bit
+    MATLAB's XR_deskewRotateFrame, 'rotate' true): the tracks of its beads (their DS
+    positions, z as processed tracks hold it) land where its DSR volume has the beads, the
+    forward scan's by the angle and the reversed scan's by the mirrored angle (W20; the frame of
+    the rotated tracks to the DSR volume's voxels fitted on the forward scan, as in probe
+    4635205); MATLAB's rotation of the reversed scan (matlab_quirks) misses them by far"""
+    from petakit5d.deskew_rotate.file import deskew_rotate_file
+    from petakit5d.detection.processing import rotate_tracks
+    from petakit5d.io import read_tiff
+    from petakit5d.io.matfile import StructArray, read_mat, write_mat
+
+    px, dz, angle = 0.104, 0.5, 31.5
+    rows = [b[1] for b in REV_BLOBS]
+    got = {}
+    for rev in (False, True):
+        d = tmp_path / f"rev{int(rev)}"
+        d.mkdir()
+        f = str(d / "scan.tif")
+        synth.write_tiff(f, _blob_scan())
+        deskew_rotate_file(f, px, dz, skew_angle=angle, reverse=rev, rotate=True,
+                           dsr_combined=False, save_16bit=False, save_mip=False)  # fmt: skip
+        ds = read_tiff(str(d / "DS" / "scan.tif"))
+        cds = _centroids(ds, rows)
+        n = ds.shape[0]
+        tracks = [
+            {
+                "t": np.array([[0.0, 2.0]]),
+                "x": np.full((1, 2), c[0]),
+                "y": np.full((1, 2), c[1]),
+                "z": np.full((1, 2), n + 1 - c[2]),
+                "startBuffer": np.zeros((0, 0)),
+                "endBuffer": np.zeros((0, 0)),
+            }
+            for c in cds
+        ]
+        rp = str(d) + os.sep
+        st = StructArray((1, len(tracks)), tuple(tracks[0]), tracks)
+        write_mat(rp + "ProcessedTracks.mat", {"tracks": st})
+        data = {
+            "source": rp,
+            "framePathsDS": [np.array([str(d / "DS" / "scan.tif")], dtype=object).reshape(-1, 1)],
+            "angle": angle,
+            "zAniso": dz * np.sin(np.deg2rad(angle)) / px,
+            "reversed": rev,
+            "objectiveScan": False,
+        }
+        rotate_tracks(data, results_path=[rp], matlab_quirks=quirks)
+        rt = list(read_mat(rp + "RotatedTracks.mat", "tracks")["tracks"])
+        rot = np.array([[float(np.asarray(t[k]).ravel()[0]) for k in "xyz"] for t in rt])
+        got[rev] = (rot, _centroids(read_tiff(str(d / "DSR" / "scan.tif")), rows))
+
+    def frame(rot):
+        return np.c_[rot[:, 0], rot[:, 2], np.ones(len(rot))]
+
+    rot, beads = got[False]
+    M, *_ = np.linalg.lstsq(frame(rot), beads[:, [0, 2]], rcond=None)
+    assert np.abs(frame(rot) @ M - beads[:, [0, 2]]).max() < 0.5
+    rot, beads = got[True]
+    err = np.abs(frame(rot) @ M - beads[:, [0, 2]]).max()
+    if quirks:
+        assert err > 10  # 20 px in the probe
+    else:
+        assert err < 0.7  # 0.49 px in the probe, the forward scan 0.34
+
+
+def test_mirrored_rotation_mirrors_z_on_both_sides():
+    """the mirrored angle's matrix is the angle's with z mirrored in the DS volume
+    (nz + 1 - z) and in the rotated box (wz + 1 - z)"""
+    from petakit5d.deskew_rotate.geometry import _cos, _round, _sin
+    from petakit5d.detection.processing import _forward, rotation_matrix
+
+    nz, ny, nx = 24, 44, 159
+    x, y, z = np.array([3.0, 80.5, 150.0]), np.array([5.0, 20.0, 40.0]), np.array([1.0, 12.3, 24.0])
+    th = 31.5 * np.pi / 180
+    wz = _round(nx * _sin(th) + nz * Z_ANISO * _cos(th))
+    xr, yr, zr = _forward(rotation_matrix((nz, ny, nx), 31.5, Z_ANISO), x, y, (nz + 1) - z)
+    xm, ym, zm = _forward(rotation_matrix((nz, ny, nx), 31.5, Z_ANISO, mirrored=True), x, y, z)
+    np.testing.assert_allclose(np.r_[xm, ym, zm], np.r_[xr, yr, (wz + 1) - zr], rtol=0, atol=1e-9)
+    same = rotation_matrix((nz, ny, nx), 31.5, Z_ANISO)
+    assert rotation_matrix((nz, ny, nx), 31.5, Z_ANISO, mirrored=False) == same
 
 
 def test_cohort_thresholds_of_a_probe():

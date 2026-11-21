@@ -26,7 +26,8 @@ black-box probes).
    port fixes (W3).
 
 ``matlab_quirks=True`` gives MATLAB's output for both slips (reversed scans deskewed as forward
-ones, the tracking stages given the folders of all movies).
+ones, the tracking stages given the folders of all movies), and the rotation stage's for a
+reversed scan (rotateTracks3D rotates it by the forward angle, W20).
 
 ``overwrite`` is one flag for all stages or four (deskew and offsets, detection, tracking, track
 processing and rotation). Unknown MATLAB options are dropped, as MATLAB's parser keeps them
@@ -138,7 +139,8 @@ def _call(name: str, *args: Any, **kwargs: Any) -> Any:
     - ``run_track_processing(data, overwrite=, tracker_output='trackedFeatures.mat',
       file_name='ProcessedTracks.mat', buffer=, buffer_all=, fit_mixtures=, window_size=,
       results_path=, parallel_method=)``: ``XR_runTrackProcessing3D``;
-    - ``rotate_tracks(data, overwrite=, crop=, results_path=)``: ``rotateTracks3D``.
+    - ``rotate_tracks(data, overwrite=, crop=, results_path=, matlab_quirks=)``:
+      ``rotateTracks3D`` (``matlab_quirks``: its rotation of reversed scans, W20).
 
     ``data`` is the condition as MATLAB's struct array (``condition.struct_array``),
     ``results_path`` the list of each movie's results folder (ending with the separator),
@@ -361,7 +363,8 @@ def _four(overwrite: Any) -> tuple[bool, bool, bool, bool]:
         "matlab_quirks",
         None,
         "MATLAB's two slips: reversed scans deskewed as forward ones (W2), the tracking stages "
-        "given the folders of all movies (W3).",
+        "given the folders of all movies (W3); and its rotation of reversed scans' tracks by the "
+        "forward angle (W20).",
         python_only=True,
     ),
     keep_unmatched=True,
@@ -406,7 +409,8 @@ def run_detection_tracking(
 ) -> None:
     """Deskew, channel offsets, detection, tracking, track processing and track rotation of a
     condition (MATLAB's ``XR_runDetTrack3d``; module docstring). ``matlab_quirks``: MATLAB's
-    output for its two slips (W2, W3) instead of the fixed one."""
+    output for its two slips (W2, W3) and for the rotation of reversed scans (W20) instead of
+    the fixed ones."""
     from petakit5d.detection.condition import Condition, short_path
     from petakit5d.detection.offsets import correct_xz_offset_data
 
@@ -495,4 +499,11 @@ def run_detection_tracking(
         parallel_method=method,
     )
     if rotate_tracks:
-        _call("rotate_tracks", structs, overwrite=ow[3], crop=crop, results_path=folders)
+        _call(
+            "rotate_tracks",
+            structs,
+            overwrite=ow[3],
+            crop=crop,
+            results_path=folders,
+            matlab_quirks=matlab_quirks,
+        )

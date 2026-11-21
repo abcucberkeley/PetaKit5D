@@ -2826,7 +2826,7 @@ Rotate tiff files of deskewed data (``XR_RotateFrame3D``).
 
 ### `XR_runDetTrack3d` -> `petakit5d.detection.wrapper.run_detection_tracking`
 
-Deskew, channel offsets, detection, tracking, track processing and track rotation of a condition (MATLAB's ``XR_runDetTrack3d``; module docstring). ``matlab_quirks``: MATLAB's output for its two slips (W2, W3) instead of the fixed one.
+Deskew, channel offsets, detection, tracking, track processing and track rotation of a condition (MATLAB's ``XR_runDetTrack3d``; module docstring). ``matlab_quirks``: MATLAB's output for its two slips (W2, W3) and for the rotation of reversed scans (W20) instead of the fixed ones.
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
@@ -2863,7 +2863,7 @@ Deskew, channel offsets, detection, tracking, track processing and track rotatio
 | `BackgroundCh3` | `background_ch_3` | par |  | `''` | `''` | `@isstr` | Background image of channel 3. |
 | `BackgroundCh4` | `background_ch_4` | par |  | `''` | `''` | `@isstr` | Background image of channel 4. |
 | `XZoffsetCorrection` | `x_zoffset_correction` | par |  | `false` | `False` | `@islogical` | Correct the channels' x and z offsets. |
-| `matlab_quirks` | `matlab_quirks` | par |  | `false` | `False` |  | MATLAB's two slips: reversed scans deskewed as forward ones (W2), the tracking stages given the folders of all movies (W3). (Python only) |
+| `matlab_quirks` | `matlab_quirks` | par |  | `false` | `False` |  | MATLAB's two slips: reversed scans deskewed as forward ones (W2), the tracking stages given the folders of all movies (W3); and its rotation of reversed scans' tracks by the forward angle (W20). (Python only) |
 
 ### `XR_runTracking3D` -> `petakit5d.detection.tracking.run.run_tracking`
 
