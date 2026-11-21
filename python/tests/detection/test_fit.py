@@ -61,6 +61,17 @@ def _windows():
     return out
 
 
+def _ad_window(name):
+    """a MATLAB (y, x, z) 7 x 7 x 7 window: 100 plus noise of standard deviation 3, and an
+    outlier of X on about 3 % of the voxels; X chosen so that the residuals' A^2 of a mode 'c'
+    fit lies near the critical value 2.308 (seed 1, X 10.5: 2.345; seed 0, X 11.75: 2.298)"""
+    seed, X = {"ad_above": (1, 10.5), "ad_below": (0, 11.75)}[name]
+    shape = (7, 7, 7)
+    base = 100.0 + 3.0 * synth.CounterRNG(2026, f"C02c.ad{seed}").normal(shape)
+    sel = synth.CounterRNG(2026, f"C02c.adsel{seed}").uniform(shape) < 0.03
+    return base + X * sel
+
+
 def _py_mex(win_m, prm, mode):
     p, ps, C, res = fit.fitgaussian3d(from_matlab(win_m), np.ravel(prm), mode)
     r = {
@@ -140,6 +151,21 @@ def _cases():
                     },
                 )
             )
+    # the mex's Anderson-Darling decision near its critical value 2.308: noise windows with a few
+    # outliers, fitted in mode 'c' (A 0), whose residuals' A^2 is 2.345 (just above) and 2.298
+    # (just below)
+    for name in ("ad_above", "ad_below"):
+        cs.append(
+            Case(
+                f"mex.c.{name}",
+                matlab="fitGaussian3D",
+                args=[In(name), [3.0, 3.0, 3.0, 0.0, 1.3, 1.3, 100.0], "c"],
+                nargout=4,
+                python=_py_mex,
+                inputs={name: Value(lambda name=name: _ad_window(name))},
+                compare={0: TOL_LINEAR, 1: TOL_LINEAR, 2: TOL_LINEAR, 3: TOL_LINEAR},
+            )
+        )
     eg = _eg_inputs()
     for name, sigma, opts in (
         ("v", [1.3758, 1.1], ["WindowSize", None]),
@@ -194,6 +220,17 @@ def test_cr_exp_is_correctly_rounded():
     ext = fit._ext()
     for x in xs:
         assert ext.cr_exp(float(x)) == float(decimal.Decimal(float(x)).exp())
+
+
+def test_the_ad_windows_straddle_the_critical_value():
+    """the mex's Anderson-Darling decision is A^2 > 2.308 (measured on 33,686 traced calls): the
+    designed windows lie at 2.345 (not normal) and 2.298 (normal), as MATLAB decides them
+    (oracle cases mex.c.ad_above and ad_below)"""
+    p0 = np.array([[3.0, 3.0, 3.0, 0.0, 1.3, 1.3, 100.0]])
+    up = fit.fit_gaussian3d_mex([from_matlab(_ad_window("ad_above"))], p0, "c")
+    lo = fit.fit_gaussian3d_mex([from_matlab(_ad_window("ad_below"))], p0, "c")
+    assert 2.308 < up.a2[0] < 2.4 and bool(up.h_ad[0]) is True
+    assert 2.25 < lo.a2[0] < 2.308 and bool(lo.h_ad[0]) is False
 
 
 def test_mode_letters():

@@ -2,16 +2,23 @@
 lowSNR detector keeps after its fits, learned as a black box (task C02; no GPL source read): the
 residuals' sigma histogram (coarsened while ragged) gives a background peak and a valley between
 it and the next peak; points with too few neighbours and a sigma below the valley, the residual
-threshold or the noise threshold are removed. Measured: the keep mask of MATLAB on 119 of the
-demo's 120 frames (both channels; the miss: a second valley search, channel 1 frame 28) and on 15
-of 15 traced calls. Inputs that matter: the positions (through the neighbour counts), sigma_r,
-``thr`` and ``bgInfo(3:4)`` (noise, camera threshold).
+threshold or the noise threshold are removed. Measured: the keep mask of MATLAB on the demo's
+120 frames with the background correction (both channels; channel 1 frame 28 takes the second
+valley search, tasks C02 and C02c), on 15 of 15 traced calls and on 249 of 285 replayed
+variants. Inputs that matter: the positions (through the neighbour counts), sigma_r, ``thr`` and
+``bgInfo(3:4)`` (noise, camera threshold).
 
 Stages (as measured): 1. ``x`` = sigma_r below its 99th percentile, ``max(60, Freedman-Diaconis,
 ceil(10 (p99 - min)/std))`` bins, peaks of prominence 5; 2. ``nb <- ceil(0.9 nb)`` while the
 histogram is ragged; 3. the background bin search with optional smoothing; 4. the path (C: thr
-only, A: the valley or thr, B: the valley and 0.8 of it); 5. neighbour counts (radius mean + 3
-std of the distance to the second-nearest other point); 6. the removal rules.
+only, A: the valley or thr, B: the valley and 0.8 of it), with the second valley search
+(``second_valley``: B, or A262, A with min(noise, 1.5 camera thresholds)) on the A paths;
+5. neighbour counts (radius mean + 3 std of the distance to the second-nearest other point);
+6. the removal rules.
+
+Open (docs/parity/detection.md, the bad-point filter): the smoothing choice of line 104 (conv or
+medfilt1), wrong on 3 of the demo's 60 frames without the background correction, and the B
+path's threshold on one more.
 """
 
 from __future__ import annotations
@@ -227,17 +234,21 @@ def valley(cnt, e, lst):
 
 
 def decide(st, thr, noise, cam):
-    """the removal path ('A317': A with T_c, 'A318': A with thr, 'B', 'C') and T_c. Measured on
-    synthetic histograms (probes e8/e9) and checked on the recorded calls:
+    """the removal path ('A317': A with T_c, 'A318': A with thr, 'B', 'C', and the second
+    search's 'A262': A with its threshold) and its threshold T_c. Measured on synthetic
+    histograms (probes e8/e9) and checked on the recorded calls:
       C when the list has one entry, or the background peak is low (cbp <= 0.34 x prctile 85 of
       the counts: the exact form is open), or its bin centre is at or above 2 x camera threshold,
       or the valley is shallow (ckv >= 0.6 cbp, line 196); (a close, taller next peak also gives
       C, lines 178-179: not implemented, no real-run frame has it);
-      B when the valley is below 0.15 of the background peak and T_c < 2 x camera threshold;
+      B when the valley is below 0.15 of the background peak and T_c < 2 x camera threshold
+      (camera threshold not 5: two designed histograms with 5 took A with T_c, task C02c);
+      otherwise (the A paths) the second valley search's decision when it makes one
+      (``second_valley``, lines 221-267: B or A262);
       A with T_c when the valley is below 0.3 of the background peak and
       max(T_noise, thr) < T_c < max(2.5 noise, 2 camera threshold), else A with thr.
-    Not covered: the second valley search (lines 223-267), the 2-entry list branch (148-149), the
-    camera threshold >= 5 and noise > 2 x camera branches."""
+    Not covered: the 2-entry list branch (148-149), the camera threshold >= 5 and noise > 2 x
+    camera branches."""
     cur, lst, e = st["cnt"], st["lst"], st["e"]
     if len(lst) < 2:
         return "C", None, {}
@@ -263,11 +274,91 @@ def decide(st, thr, noise, cam):
         return "C", tc, info
     if ckv >= 0.6 * cbp:
         return "C", tc, info
-    if ckv < 0.15 * cbp and tc < 2 * cam:
+    if ckv < 0.15 * cbp and cam != 5 and tc < 2 * cam:
         return "B", tc, info
+    sv = second_valley(cur, e, bp, nxt, cam, noise, info)
+    if sv is not None:
+        return sv[0], sv[1], info
     if ckv < 0.3 * cbp and tc > max(tn, thr) and tc < max(2.5 * noise, 2 * cam):
         return "A317", tc, info
     return "A318", tc, info
+
+
+# the second valley search's levels: the background peak's count over these
+SECOND_DIVISORS = (4.0, 3.5, 3.0, 2.5, 2.0)
+
+
+def _msum(v) -> float:
+    from petakit5d.matlabcompat import reduce
+
+    v = np.asarray(v, dtype=np.float64).ravel()
+    return float(np.asarray(reduce.sum(v)).ravel()[0]) if v.size else 0.0
+
+
+def second_trigger(cur, bp: int) -> bool:
+    """lines 221-222: the second valley search runs when the bins around the background peak
+    hold a large share of all counts: the three bins from max(bp - 1, 1) more than 0.12 of
+    them (line 221), or the first two of those more than 0.09 (line 222; 786 of 786 designed
+    and real calls)"""
+    cur = np.asarray(cur, dtype=np.float64)
+    total = _msum(cur)
+    if not total > 0:
+        return False
+    lo = max(bp - 1, 1) - 1
+    return _msum(cur[lo : lo + 3]) / total > 0.12 or _msum(cur[lo : lo + 2]) / total > 0.09
+
+
+def second_valley(
+    cur, e, bp: int, nxt: int, cam: float, noise: float = 0.0, info: dict | None = None
+):
+    """the second valley search (lines 221-267; reached on the A paths, after the first valley's
+    B test): (path, threshold) of the decision it makes, or None to keep the first valley's.
+    Measured with about 620 designed histograms and the demo's calls (MATLAB's line numbers and
+    keep masks only, no source read):
+
+    - when ``second_trigger``: for the levels cbp / d, d = 4, 3.5, 3, 2.5, 2 in turn (lines
+      226-229), the first bin j after the background peak and before the next listed peak
+      whose count is below the level (strict); T2 = its upper edge e(j + 1) (line 232);
+    - ('B', T2) when j was found at one of the first four levels and T2 < 2 cam (cam, the
+      camera threshold, not 5; lines 238-243; for cam above 5 the bound is open: 8.585 at 5.5
+      gave B);
+    - otherwise, for cam below 5 and the first bin's centre below 1.5 cam (lines 247 and 257;
+      the background peak was bin 1 in the designs, a recorded call with it at bin 9 or 10 took
+      the lines with the first bin's centre below 1.5 cam, and one with cam 6 did not):
+      ('B', T2) when the count of bin j is below cbp / 5 (lines 248-252), else, with j found at
+      one of the first three levels (line 258), ('A262', min(noise, 1.5 cam)) (line 262: A's
+      removal with that threshold, the noise rule's threshold at most it, B's median bound);
+    - otherwise the first valley's decision stands (with cam 5 MATLAB enters both blocks and
+      keeps it: lines 249-250, 259-260)."""
+    cur = np.asarray(cur, dtype=np.float64)
+    if not second_trigger(cur, bp):
+        return None
+    cbp = cur[bp - 1]
+    found = None
+    for i, d in enumerate(SECOND_DIVISORS, start=1):
+        lv = cbp / d
+        for j in range(bp + 1, nxt):  # 1-based bins bp+1 .. nxt-1
+            if cur[j - 1] < lv:
+                found = (i, j)
+                break
+        if found:
+            break
+    if info is not None:
+        info["second"] = found
+    if found is None:
+        return None
+    level, j = found
+    t2 = float(e[j])  # e(j + 1), 1-based
+    if level <= 4 and cam != 5 and t2 < 2 * cam:
+        return "B", t2
+    s1 = e[0] + (e[1] - e[0]) / 2  # the first bin's centre
+    if cam >= 5 or not s1 < 1.5 * cam:
+        return None
+    if cur[j - 1] < cbp / 5:
+        return "B", t2
+    if level <= 3:
+        return "A262", min(noise, 1.5 * cam)
+    return None
 
 
 # ---------------------------------------------------------------- stage 5-6
@@ -303,11 +394,13 @@ def removal(sr, cnt, thr, noise, cam, path, tc, U=8):
         rem |= (cnt >= 2) & (cnt <= 4) & (sr < tc)
         rem |= (cnt >= 5) & (cnt <= U) & (sr < 0.8 * tc)
     else:
-        t1 = tc if path == "A317" else thr
+        t1 = tc if path in ("A317", "A262") else thr
         rem |= (cnt >= 2) & (cnt <= (10 if flag17 and path == "A318" else 3)) & (sr < t1)
     if not (flag17 and path in ("A318", "C")):
         if path in ("A318", "C"):
             tn = min(tn, thr)
+        elif path == "A262":  # the second search's A: the noise rule at most its threshold
+            tn = min(tn, tc)
         rem |= (cnt >= 2) & (cnt <= U) & (sr < tn)
     return ~rem
 
@@ -315,8 +408,10 @@ def removal(sr, cnt, thr, noise, cam, path, tc, U=8):
 def median_bound(sr, cnt, path, tc):
     """U, the upper neighbour count of the B class-2 and noise rules: min(median of the
     candidates' counts, 10) when MATLAB takes that median, else 8. Candidates: sr < T_c.
-    B (line 352, exact on all 72 recorded B calls): the median is taken when there are more than
-    100 candidates and more than half of them have a count above 8.
+    B and A262 (line 352; A262 runs B's lines 351-357; exact on the 72 recorded B calls and 18
+    of the 19 B frames of the demo without the background correction): the median is taken
+    when there are more than 100 candidates and more than half of them have a count above 8.
+    Open: that frame (103 candidates, median count 8, 51 above 8) took it with U 9 or 10.
     A (line 359, PROVISIONAL): taken when there are more than 100 candidates (right on every
     real-run frame; the rule is open for low-noise and A-with-thr calls). C: never."""
     if path == "C" or tc is None:
@@ -324,7 +419,7 @@ def median_bound(sr, cnt, path, tc):
     sr = np.asarray(sr, float).ravel()
     cand = sr < tc
     nc = int(np.sum(cand))
-    if path == "B":
+    if path in ("B", "A262"):  # A262: the lines of B's median (351-357)
         take = nc > 100 and int(np.sum(cnt[cand] > 8)) > nc / 2
     else:
         take = nc > 100
