@@ -1,0 +1,25 @@
+{
+ "name": "lifetime_c05",
+ "description": "C05: runLifetimeAnalysis3D ('overwrite' true: the tracks read again) and plotIntensityCohorts on the demo condition (3 experiments, 2 channels, 60 frames; MATLAB's ProcessedTracks.mat of a demo run), as the multiple-experiments demo calls them (MATLAB with its JVM: the condition loader and the figures need it), against run_lifetime_analysis and plot_intensity_cohorts. Inputs from PK5D_C05_FRAMES (the demo condition's frames) and PK5D_C05_TRACKS (a demo run's experiments with their tracks, as in PetaKit5D_point_detection_demo_tracks), set with brun.sh -v.",
+ "repeats": 5,
+ "warmup": 1,
+ "params": {"analysis": "Analysis_update_3"},
+ "setup": ["{python} {src}/benchmarks/detection/lifetime_c05_data.py {work} {env[PK5D_C05_FRAMES]} {env[PK5D_C05_TRACKS]} {analysis}"],
+ "variants": [
+  {
+   "id": "ml",
+   "impl": "matlab",
+   "paths": ["benchmarks/detection", "benchmarks/common"],
+   "flags": ["-nodisplay", "-nosplash", "-nodesktop"],
+   "code": "lifetime_c05_ml('{work}/matlab', '{analysis}', 1)"
+  },
+  {
+   "id": "py",
+   "impl": "python",
+   "script": "benchmarks/detection/lifetime_c05.py",
+   "args": ["{work}/python", "{analysis}", "--repeats", "1"]
+  }
+ ],
+ "compare": [{"a": "py", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "overhead_max": 1.0, "metrics": ["op:lifetime_analysis@*", "op:intensity_cohorts@*"]}
+}

@@ -26,9 +26,12 @@ Modules:
   ``ProcessedTracks.mat``) and the tracks' rotation (``rotateTracks3D``: ``rotate_tracks``,
   ``RotatedTracks.mat``).
 - ``amira``: the processed tracks as Amira files (``XR_amiraWriteTracks``: ``write_tracks``).
+- ``lifetime``: the lifetime analysis of processed tracks (``runLifetimeAnalysis3D``:
+  ``run_lifetime_analysis``; ``plotIntensityCohorts``' numbers: ``plot_intensity_cohorts``).
 """
 
 from petakit5d.detection.condition import load_condition_data
+from petakit5d.detection.lifetime import plot_intensity_cohorts, run_lifetime_analysis
 from petakit5d.detection.offsets import correct_xz_offset_data
 from petakit5d.detection.processing import rotate_tracks, run_track_processing
 from petakit5d.detection.run import run_detection, run_detection_frame_parallel
@@ -38,9 +41,11 @@ __all__ = [
     "correct_xz_offset_data",
     "deskew_data",
     "load_condition_data",
+    "plot_intensity_cohorts",
     "rotate_tracks",
     "run_detection",
     "run_detection_frame_parallel",
     "run_detection_tracking",
+    "run_lifetime_analysis",
     "run_track_processing",
 ]

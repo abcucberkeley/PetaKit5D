@@ -245,6 +245,7 @@ _ACCEPTS_WORDS = {
     "vector": "port:vector",
     "evenly-spaced": "port:evenly",
     "nonnegative-whole": "port:whole",
+    "positive-whole": "port:poswhole",
 }
 _ACCEPTS_CALL = re.compile(r"(numel|in)\(([^()|&!]*)\)")
 
@@ -270,6 +271,7 @@ def accepts_alternatives(text: str) -> list[frozenset[str]]:
     ``evenly-spaced`` (numbers, logicals or text with two or more elements whose differences
     along the first dimension that is not 1 take one value; each NaN difference counts as a
     value of its own); ``nonnegative-whole`` (numbers, each whole and >= 0, Inf too);
+    ``positive-whole`` (the same, each > 0);
     ``in(w1,...)`` (text equal to one of the words in any case, or a cell of such texts)."""
     alts: list[frozenset[str]] = []
     for alt in text.split("|"):
@@ -288,7 +290,7 @@ def accepts_mcc(alts: list[frozenset[str]]) -> str:
             "isempty" in preds,
             bool(
                 preds & {"isnumeric", "islogical", "isscalar"}
-                or port & {"vector", "numel", "evenly", "whole"}
+                or port & {"vector", "numel", "evenly", "whole", "poswhole"}
             ),
             "iscell" in preds,
             "isstruct" in preds,
@@ -447,12 +449,12 @@ def _port_pred(name: str, x: Any) -> bool:
         d = np.diff(a, axis=dim).ravel()
         nan = np.isnan(d)
         return int(nan.sum()) + len(set(d[~nan].tolist())) == 1
-    if kind == "whole":
+    if kind in ("whole", "poswhole"):
         import numpy as np
 
         if a is None or not _pred("isnumeric", x):
             return False
-        return bool(np.all((a == np.floor(a)) & (a >= 0)))
+        return bool(np.all((a == np.floor(a)) & ((a > 0) if kind == "poswhole" else (a >= 0))))
     raise RegistryError(f"unknown predicate {name}")
 
 

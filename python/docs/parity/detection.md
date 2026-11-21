@@ -307,3 +307,65 @@ first and last frames): every field but those of W11 and W12, in both files.
 | W18 | a single track whose span is longer than its columns (a one-frame branch that merges into a segment at that segment's first frame is dropped, the span kept) | MATLAB's `XR_amiraWriteTracks` stops with `MATLAB:badsubscript` in its `parfor`, after `ProcessedTracks.mat` is saved and some frames' files are written, and `XR_runTrackProcessing3D` raises it; the port writes every frame's file (the track's points up to its columns) | none: the oracle cases leave the structure out (`run.compound`) | MATLAB indexes the amplitudes by the span |
 | W19 | the Amira files' line ends on Windows | not measured: MATLAB writes each file's header and section marks with `fprintf` to a file opened `'w'`/`'a'` (`\n`) and the data rows with `dlmwrite`, whose line terminator on Windows its documentation does not give (no Windows MATLAB was used); the port writes `\n` everywhere, as MATLAB does on Linux | none (the files are compared on Linux only) | not measured |
 | W20 | `rotate_tracks` of a reversed scan (the movie's `reversed`) | MATLAB's `rotateTracks3D` does not read `reversed` (its output the same for `reversed` true and false): it rotates every scan by the angle. A reversed scan deskewed in its direction (`XR_deskewRotateFrame` with `reverse`, as the port deskews it: W2) needs the mirrored angle; MATLAB's tracks of that scan miss the beads of its DSR volume (`XR_deskewRotateFrame` with `reverse` and `rotate`) by up to 20.2 px in x and z | a reversed scan rotated by the mirrored angle about the same centres (`rotation_matrix(mirrored=True)`: z mirrored in the DS volume and in the rotated box); `rotate_tracks(matlab_quirks=True)`, and so `run_detection_tracking(matlab_quirks=True)`, give MATLAB's | probe jobs 4635205 and 4635214 (oracle tree 45b2bb1): six blobs in a synthetic 24-plane scan (31.5 degrees, dz 0.5, 0.104 um pixels), their centroids in the DS and DSR volumes (the separate and the combined deskew and rotation), tracks of the DS centroids; the frame of the rotated tracks to the DSR volume's voxels fitted on the forward scan (residuals 0.34 px). Reversed: the mirrored angle within 0.49 px of the beads, MATLAB's rotation up to 20.2 px off. The DSR volume of a reversed scan is itself the z mirror of the forward scan's of the same sample (within 0.4 px; the raw stack in the other order), so a reversed scan's volume and tracks both come out upside down against a forward scan's. `deskew_rotate_file` gives the probe's DS and DSR volumes bit for bit. Case `rotate.reversed` (MATLAB's output, `matlab_quirks`); `test_reversed_scan_rotation` (the port's deskew and rotation) |
+
+## Lifetime analysis (`detection.lifetime`, C05)
+
+`runLifetimeAnalysis3D` and `plotIntensityCohorts` (the numbers; the figures are not ported),
+measured as black boxes: the GPL functions they reach (`getLifetimeData`, `loadTracks`,
+`scaleEDFs`, `fitGaussianModeToCDF`, `getVisitorIndex`, `adtest1`, the `binterp` mex) through
+their inputs and outputs, and the MathWorks functions (`lsqnonlin`, `hist`, `interp1`,
+`normcdf`, `erf`) from documentation and probes. Cases: `tests/detection/test_lifetime.py`
+(synthetic conditions of one, two and three movies, the functions alone, and `lifetime.demo`:
+MATLAB's `ProcessedTracks.mat` of the multiple-experiments demo, three movies, 1,160 tracks of
+category Ia). Approved by the user on 2026-11-20.
+
+Exact, bit for bit: the files (`lifetimeData.mat`, `Parameters.mat` but its threshold), the
+lifetime histograms of every category and their counts, the visitors, the CCP and CS
+classification and every histogram that follows from it (but in one condition, L4), the starts
+per frame, the cohorts' statistics of one movie (up to `binterp`, L7), `hist`
+(centers; a value on an edge counts in the lower bin), `erf`, `erfc` (fdlibm's, 409,402 values)
+and `normcdf`, `interp1` (`'linear'`, `matlabcompat.interp`), `getVisitorIndex`, and on the demo
+data every field of `lftRes` but `MaxIntensityThreshold`.
+
+The fits are `lsqnonlin`'s trust-region-reflective algorithm, rebuilt from Coleman and Li's
+method and the rules measured on 469 problems with every evaluation recorded. Where the port's
+path through a fit is MATLAB's, the results agree to about 1e-9; MATLAB sometimes takes another
+step than the exact two-dimensional subproblem (the rule was not found), and on the non-smooth
+objective of the mode fit (`fitGaussianModeToCDF` fits the CDF below the mode only) another step
+can end in another local minimum.
+
+| Row | Output | Measured (largest) | Tolerance | Cause |
+|---|---|---|---|---|
+| L1 | `matlabcompat.optim.lsqnonlin` on smooth problems (exponential decay, a Gaussian CDF, Rosenbrock with an active bound) | 8.8e-10 relative; resnorm 1e-9 | `rel` 1e-6, `abs` 1e-12 | the rounding of MATLAB's products and solves (BLAS and LAPACK) |
+| L2 | `scaleEDFs` (the movies' scale factors `a` and offsets `c`) | where the path is MATLAB's (the demo's 8 fits, 85 of 100 random problems, the cases of lognormal samples): `a` 8.3e-10, `c` 7.9e-7; another path (3 cases: synthetic maxima, a grid past the reference's values): `a` 7.3e-4, `c` 3.6e-3 absolute | `rel` 1e-6, `abs` 1e-9; another path `rel` 1e-3, `abs` 5e-3 | the subproblem's steps (above); `c` is near 0 |
+| L3 | `fitGaussianModeToCDF` (the Gaussian mode: mu, sigma) | the path is MATLAB's in 26 of the demo's 61 fits and 100 of 300 random problems (within 1e-6); otherwise up to 2.1% (cases: 3.3e-4, 6.4e-5, 2.1%), and up to 74% on the demo's two-frame cohorts | `rel` 0.03 (cases) | a non-smooth objective: another step, another local minimum |
+| L4 | `MaxIntensityThreshold` (`lftRes`, `Parameters.mat`) | demo 9.9e-10; synthetic conditions 5e-6 to 7.9e-5; a synthetic condition of two movies 8.4% | `rel` 1e-4; where the fit ends in another local minimum `rel` 0.1, the fields of the CCP and CS classification not compared | L3 and L2 (the threshold is mu + sigma `norminv(0.99)` of the mode of the scaled maxima): in the two-movie condition the scale factors took another path (7.7e-4) and the threshold's fit, on inputs differing by that much, another minimum, so 2 of about 130 tracks were classified otherwise; elsewhere the classification was the same in every run, and so were `nFramesThreshold` and the ten Anderson-Darling decisions before it |
+| L5 | `adtest1`'s statistic and p-value | 2e-14 relative | `rel` 1e-13 | MATLAB's `log` (138 of 144 probed statistics bit for bit); the decision `H` exact |
+| L6 | `binterp` (cubic B-spline, mirror boundaries) | 2.2e-14 relative (cases), 7.6e-13 of the value on the demo's 1,948 calls | `rel_max` 2e-13, `abs` 1e-13 | the recursive filter's order (Thevenaz, Blu and Unser's algorithm, not the mex's code) |
+| L7 | the cohorts' `A`, `Amin`, `Aplus` | several movies: demo 2.3e-8 relative (5e-8 absolute), synthetic 1.9e-3; one movie (no scaling): 4.7e-14 | several movies `rel` 5e-3, `abs` 1e-9; one movie `rel_max` 2e-13, `abs` 1e-12 | the scaled amplitudes (L2's factors); with one movie `binterp` (L6) |
+
+Errors kept from MATLAB: a lifetime cohort without tracks raises `stats:ecdf:NotEnoughData`
+(`ecdf` of nothing), constant samples `optimlib:commonMsgs:UsrObjUndefAtX0` (the mode fit's
+start), fewer than five values `adtest1`'s error, and `binterp` NaN samples and positions outside
+[0, n + 1]. The last three are MATLAB errors without an identifier whose messages are
+third-party text: their cases compare the identifier only (the empty one), and their manifest
+entries withhold the messages (`Case(error_text="withheld")`; decided by the user on
+2026-11-20). Not reproduced, as MATLAB's result depends on memory beyond the input: `binterp` of
+one sample, and of fewer than four samples at positions outside [1, n].
+
+Options of `runLifetimeAnalysis3D` (registered with MATLAB's interface; the port's checks of its
+options fitted to MATLAB's parser on 20 probe cases, `tests/params/test_third_party_checks.py`):
+`AnalysisPath`, `ProcessedTracks` and `LifetimeData` (case `lifetime.file_names`), `Overwrite`,
+and `Display` (`lifetime.display_off`: MATLAB's numbers and printed values are the default's)
+are ported. The others are not measured: at other values than their defaults they raise
+`NotImplementedError`, and so does a cell mask at `<source><MaskPath>` (the cell areas and
+initiation densities stay NaN).
+
+**MATLAB's quirks kept**: the tracks are sorted by lifetime, longest first, before anything
+else (`index` numbers that order); the visitors are not scaled; the second channel's CS
+histograms (`lftHistSlaveCS`) are normalized by their own count, not by the CS tracks of all
+combinations; `startsPerFrameAll` counts the starts of frames 6 to `movieLength` - 2;
+`plotIntensityCohorts`' standard error divides by the square root of the number of movies, also
+where a movie has no track in the cohort, and with one movie its curves are another statistic:
+the median of the tracks between their 25th and 75th percentiles; the mode fit starts from half
+the standard deviation.
