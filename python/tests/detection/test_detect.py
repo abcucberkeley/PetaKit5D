@@ -17,8 +17,9 @@ from petakit5d.core.arrays import from_matlab, to_matlab
 from petakit5d.detection import detect, fit
 from petakit5d.matlabcompat import neighbors, signal
 from petakit5d.testing import oracle, synth
-from petakit5d.testing.cases import Case, In, Value
+from petakit5d.testing.cases import Case, In, InPath, Tree, Value
 from petakit5d.testing.compare import EXACT, tol
+from petakit5d.testing.compare import tree as tree_spec
 
 _spec = importlib.util.spec_from_file_location(
     "detection_references", Path(__file__).with_name("test_references.py")
@@ -315,9 +316,56 @@ def _cases():
                 compare={0: TOL_SPEEDUP_MEX, 1: EXACT},
             )
         )
+    # XR_runDetTrack3d's detection stage (XR_runDetection3D_frame_parallel with the wrapper's
+    # options: 'lowSNR' without the background correction) on C01's synthetic condition: every
+    # file it writes (Detection3D.mat, the per-frame Detections/Detection_F_<k>.mat, the masks)
+    cs.append(
+        Case(
+            "frame_parallel.wrapper_options",
+            code=REF.CLEAR_CODE
+            + REF.LOAD
+            + "apath = {[data(1).source 'Analysis' filesep]}; "
+            + "XR_runDetection3D_frame_parallel(data, 'Sigma', in{2}, 'Overwrite', false, "
+            + "'WindowSize', [], 'ResultsPath', apath, 'Mode', 'xyzAc', 'FitMixtures', false, "
+            + "'MaxMixtures', 2, 'DetectionMethod', 'lowSNR', 'BackgroundCorrection', false); "
+            + "out = {};",
+            args=[InPath("cond"), SIGMA_RUN],
+            nargout=0,
+            python=_py_frame_parallel,
+            inputs={"cond": Tree(REF.make_condition, "cond")},
+            tree=tree_spec(per_file={"*.mat": TOL_DETECT}),
+            marks=("slow",),
+        )
+    )
     return cs
 
 
+def _py_frame_parallel(rt, sigma):
+    import os
+
+    from petakit5d.detection import condition as cond
+    from petakit5d.detection import run
+
+    detect.clear_threshold_cache()  # the case starts a MATLAB session's state
+    data = cond.load_condition_data(
+        os.path.join(rt, REF.EXPERIMENT) + os.sep, ["ch1", "ch2"], ["gfp", "rfp"]
+    )
+    rp = [data[0].source + "Analysis" + os.sep]
+    run.run_detection_frame_parallel(
+        data,
+        np.asarray(sigma),
+        rp,
+        overwrite=False,
+        window_size=None,
+        mode="xyzAc",
+        fit_mixtures=False,
+        max_mixtures=2,
+        detection_method="lowSNR",
+        background_correction=False,
+    )
+
+
+SIGMA_RUN = np.array([REF.SIGMA_DS[1], REF.SIGMA_DS[2]])
 CASES = _cases()
 
 
@@ -478,9 +526,6 @@ def _movie(root, frames=3) -> dict:
     return {"source": chans[0], "channels": chans, "framePathsDS": cols, "zAniso": 2.5}
 
 
-SIGMA_RUN = np.array([REF.SIGMA_DS[1], REF.SIGMA_DS[2]])
-
-
 def test_run_detection_writes_detections_and_masks(tmp_path):
     """PointDetectionTest's runDetectionWritesDetectionsAndMask in intent: the 'speedup' run
     writes Detection3D.mat with one entry per frame and one mask per frame, no Amira folder
@@ -613,6 +658,215 @@ def test_run_detection_refuses_what_is_not_ported(tmp_path):
     with pytest.raises(ValueError):
         run.run_detection(m, None, rp)
     assert not os.path.exists(rp[0])
+
+
+def _fp_entries(path):
+    from petakit5d.io import matfile
+
+    fi = matfile.read_mat(path, "frameInfo")["frameInfo"]
+    return [fi] if isinstance(fi, dict) else list(fi)
+
+
+def _same_entry(a, b) -> bool:
+    return all(
+        np.array_equal(np.asarray(a[k]), np.asarray(b[k]), equal_nan=True)
+        for k in a
+        if k != "dRange"
+    ) and all(np.array_equal(x, y) for x, y in zip(a["dRange"], b["dRange"], strict=True))
+
+
+def test_frame_parallel_writes_run_detection_s_files(tmp_path):
+    """XR_runDetection3D_frame_parallel (measured, probes fp1-fp4): the same Detection3D.mat and
+    masks as XR_runDetection3D, plus Detections/Detection_F_<k>.mat per frame (k not padded,
+    one variable frameInfo_k, the frame's entry) and an empty Amira/Detection folder"""
+    import os
+
+    from petakit5d.detection import run
+    from petakit5d.io import matfile, read_tiff
+
+    REF.make_condition(tmp_path)
+    m = _movie(tmp_path)
+    ra, rb = str(tmp_path / "RA") + os.sep, str(tmp_path / "RB") + os.sep
+    detect.clear_threshold_cache()
+    (ea,) = run.run_detection(m, SIGMA_RUN, [ra], detection_method="lowSNR")
+    detect.clear_threshold_cache()
+    (eb,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rb], detection_method="lowSNR")
+    fa, fb = _fp_entries(ra + "Detection3D.mat"), _fp_entries(rb + "Detection3D.mat")
+    assert len(fa) == len(fb) == 3 and all(_same_entry(a, b) for a, b in zip(fa, fb, strict=True))
+    assert sorted(os.listdir(rb + "Detections")) == [f"Detection_F_{k}.mat" for k in (1, 2, 3)]
+    for k in (1, 2, 3):
+        v = matfile.read_mat(rb + f"Detections/Detection_F_{k}.mat")
+        assert list(v) == ["frameInfo_k"] and _same_entry(v["frameInfo_k"], fb[k - 1])
+        name = run.dmask_name(k, 3)
+        assert np.array_equal(read_tiff(ra + "Masks/" + name), read_tiff(rb + "Masks/" + name))
+    assert os.listdir(rb + "Amira/Detection") == []
+    assert len(eb) == 3 and np.array_equal(np.asarray(eb[0]["x"]), np.asarray(ea[0]["x"]))
+
+
+def test_frame_parallel_reuses_frames_and_skips_movies(tmp_path):
+    """MATLAB's job framework (probes fp1-fp3): a frame whose Detections file exists is not
+    detected again (its entry goes into Detection3D.mat as it is), a movie whose Detection3D.mat
+    exists is skipped with overwrite false; with overwrite true the port detects every frame
+    again (MATLAB keeps both files then, ignoring the flag: parity D11)"""
+    import os
+
+    from petakit5d.detection import run
+    from petakit5d.io import matfile
+
+    REF.make_condition(tmp_path)
+    m = _movie(tmp_path)
+    rp = str(tmp_path / "R") + os.sep
+    detect.clear_threshold_cache()
+    (first,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    # frame 2's file changed, Detection3D.mat removed: frame 2 is taken as it is
+    f2 = rp + "Detections/Detection_F_2.mat"
+    e2 = matfile.read_mat(f2)["frameInfo_k"]
+    x = np.array(e2["x"], dtype=np.float64)
+    x[0, 0] = 999.0
+    e2["x"] = x
+    matfile.write_mat(f2, {"frameInfo_k": e2}, version="7.3")
+    os.remove(rp + "Detection3D.mat")
+    (again,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    assert np.asarray(_fp_entries(rp + "Detection3D.mat")[1]["x"])[0, 0] == 999.0
+    assert np.asarray(again[1]["x"])[0, 0] == 999.0
+    # Detection3D.mat exists: skipped
+    stamp = os.path.getmtime(rp + "Detection3D.mat")
+    assert run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR") == [None]
+    assert os.path.getmtime(rp + "Detection3D.mat") == stamp
+    # overwrite: every frame detected again
+    detect.clear_threshold_cache()
+    (fresh,) = run.run_detection_frame_parallel(
+        m, SIGMA_RUN, [rp], detection_method="lowSNR", overwrite=True
+    )
+    assert np.array_equal(np.asarray(fresh[1]["x"]), np.asarray(first[1]["x"]))
+    assert np.asarray(_fp_entries(rp + "Detection3D.mat")[1]["x"])[0, 0] != 999.0
+
+
+def test_frame_parallel_keeps_a_detection3d_another_caller_wrote(tmp_path, monkeypatch):
+    """callers sharing a movie's frames: when Detection3D.mat appears while this caller's tasks
+    end (another caller gathered the frames first), it is kept as that caller wrote it"""
+    import os
+
+    from petakit5d.detection import run
+    from petakit5d.jobs import framework
+
+    REF.make_condition(tmp_path)
+    m = _movie(tmp_path)
+    rp = str(tmp_path / "R") + os.sep
+    orig = framework.run_tasks
+
+    def tasks_then_another_caller(*a, **kw):
+        out = orig(*a, **kw)
+        with open(kw["final_out_fullpath"], "wb") as f:
+            f.write(b"another caller's file")
+        return out
+
+    monkeypatch.setattr(framework, "run_tasks", tasks_then_another_caller)
+    detect.clear_threshold_cache()
+    (entries,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    assert len(entries) == 3
+    with open(rp + "Detection3D.mat", "rb") as f:
+        assert f.read() == b"another caller's file"
+
+
+def test_frame_parallel_takes_over_a_stale_marker(tmp_path):
+    """a frame's Detection_F_<k>.tmp marker (the job framework's, as MATLAB's runner leaves it
+    while a frame is detected) older than the framework's wait time is taken over: the frame is
+    detected here and its marker removed (a fresh marker is left to its caller: the framework's
+    rule, tests/jobs)"""
+    import os
+    import time
+
+    from petakit5d.detection import run
+
+    REF.make_condition(tmp_path)
+    m = _movie(tmp_path)
+    rp = str(tmp_path / "R") + os.sep
+    os.makedirs(rp + "Detections")
+    marker = rp + "Detections/Detection_F_2.tmp"
+    open(marker, "w").close()
+    old = time.time() - 600
+    os.utime(marker, (old, old))
+    detect.clear_threshold_cache()
+    (out,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    assert len(out) == 3 and os.path.exists(rp + "Detection3D.mat")
+    assert sorted(os.listdir(rp + "Detections")) == [f"Detection_F_{k}.mat" for k in (1, 2, 3)]
+
+
+def test_frame_parallel_empty_frame_gets_the_empty_entry(tmp_path, monkeypatch):
+    """a frame without detections: the empty entry, as XR_runDetection3D gives it (MATLAB's
+    frame-parallel runner repeats the session's previous frame's detections there: parity
+    D12, probe fp3)"""
+    import os
+
+    from petakit5d.detection import run
+
+    REF.make_condition(tmp_path)
+    m = _movie(tmp_path)
+    rp = str(tmp_path / "R") + os.sep
+    orig = detect.point_source_detection
+    calls = []
+
+    def no_detections_in_frame_2(vol, sigma, **kw):
+        calls.append(1)
+        ps, mask = orig(vol, sigma, **kw)
+        if len(calls) == 2:
+            ps = {k: (np.asarray(v)[..., :0]) for k, v in ps.items()}
+        return ps, mask
+
+    monkeypatch.setattr(detect, "point_source_detection", no_detections_in_frame_2)
+    detect.clear_threshold_cache()
+    (entries,) = run.run_detection_frame_parallel(m, SIGMA_RUN, [rp], detection_method="lowSNR")
+    e = entries[1]
+    assert np.asarray(e["x"]).shape == (0, 0) and np.asarray(e["isPSF"]).shape == (0, 0)
+    assert np.array_equal(e["s"], SIGMA_RUN) and len(e["dRange"]) == 2
+    assert np.asarray(entries[0]["x"]).size > 0 and np.asarray(entries[2]["x"]).size > 0
+
+
+def test_frame_parallel_refuses_what_is_not_ported(tmp_path):
+    import os
+
+    import pytest
+
+    from petakit5d.detection import run
+
+    REF.make_condition(tmp_path)
+    m = _movie(tmp_path, frames=1)
+    rp = [str(tmp_path / "R") + os.sep]
+    with pytest.raises(NotImplementedError, match="XR_pointSourceDetection3D_1"):
+        run.run_detection_frame_parallel(m, SIGMA_RUN, rp)  # MATLAB's default method
+    for kw in ({"detection_method": "adaptive"}, {"detection_method": "original"},
+               {"detection_method": "lowSNR", "window_size": [2, 2]},
+               {"detection_method": "lowSNR", "fit_mixtures": True}):  # fmt: skip
+        with pytest.raises(NotImplementedError):
+            run.run_detection_frame_parallel(m, SIGMA_RUN, rp, **kw)
+    assert not os.path.exists(rp[0])
+
+
+def test_the_wrapper_runs_the_frame_parallel_detection(tmp_path):
+    """XR_runDetTrack3d's default detection stage ('lock_distributed', not on Windows) with
+    run_detection_frame_parallel: Detection3D.mat and a file per frame in each Analysis folder"""
+    import os
+
+    from petakit5d.detection import condition as cond
+    from petakit5d.detection import run, wrapper
+    from petakit5d.io import matfile
+
+    REF.make_condition(tmp_path)
+    data = cond.load_condition_data(str(tmp_path), ["ch1", "ch2"], ["gfp", "rfp"])
+    old = dict(wrapper.STAGES)
+    try:
+        wrapper.STAGES["run_detection_frame_parallel"] = run.run_detection_frame_parallel
+        wrapper.STAGES["run_detection"] = run.run_detection
+        wrapper.run_detection_tracking(data, sigma=SIGMA_RUN, track=False)
+    finally:
+        wrapper.STAGES.clear()
+        wrapper.STAGES.update(old)
+    res = os.path.join(data[0].source, "Analysis")
+    fi = matfile.read_mat(os.path.join(res, "Detection3D.mat"))["frameInfo"]
+    assert len(fi) == REF.N_FRAMES
+    if os.name != "nt":  # Windows: XR_runDetTrack3d's parfor (run_detection)
+        assert len(os.listdir(os.path.join(res, "Detections"))) == REF.N_FRAMES
 
 
 def test_fit_cd_counts_no_iteration_for_a_window_too_small():

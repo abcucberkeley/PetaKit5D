@@ -17,7 +17,7 @@ import pytest
 from petakit5d.detection import detect, run, sigma
 from petakit5d.io import read_tiff
 from petakit5d.testing import oracle, synth
-from petakit5d.testing.cases import Case, InPath, Tree
+from petakit5d.testing.cases import Case, File, InPath, Tree
 from petakit5d.testing.compare import EXACT, tol
 
 _spec = importlib.util.spec_from_file_location(
@@ -157,7 +157,40 @@ def _cases():
             py_error=(run.CameraSettingsError,),
         )
     )
+    # a bead of two Gaussians (a core and a halo): its fitted sigmas grow with the window, so
+    # the window changes in each round and the third round moves the estimate by 1.4 %
+    cs.append(
+        Case(
+            "estimate_sigma.halo_bead",
+            code="[a, b, c] = GU_estimateSigma3D(in{1}, []); out = {a, b, c};",
+            args=[InPath("psf")],
+            nargout=3,
+            inputs={"psf": File(_write_halo_bead, "psf_halo.tif")},
+            python=_py_estimate_file,
+            compare=TOL_SIGMA,
+        )
+    )
     return cs
+
+
+def halo_bead() -> np.ndarray:
+    """(z, y, x) uint16: a Gaussian bead (sigmas 2.4, 1.3) with a halo of half its amplitude
+    and twice its sigmas, on 100 with noise of standard deviation 2"""
+    shape, pos = (40, 48, 48), [(20.2, 23.7, 24.4)]
+    v = synth.beads(shape, pos, (2.4, 1.3), 2000.0, 100.0).astype(np.float64)
+    v = v + synth.beads(shape, pos, (4.8, 2.6), 1000.0, 0.0)
+    v = v + 2.0 * synth.CounterRNG(2026, "C02c.halo").normal(shape)
+    return np.round(v).astype(np.uint16)
+
+
+def _write_halo_bead(path):
+    synth.write_tiff(path, halo_bead())
+
+
+def _py_estimate_file(path):
+    detect.clear_speedup_cache()
+    sxy, sz, xyz, _, _ = sigma.estimate_sigma3d(path)
+    return [sxy, sz, {k: xyz[k] + 1 for k in ("x", "y", "z")}]
 
 
 CASES = _cases()
@@ -182,6 +215,23 @@ def test_a_bead_gives_its_sigmas():
     assert sxy == pytest.approx(1.4, rel=0.03)
     assert sz == pytest.approx(2.6, rel=0.03)
     assert [xyz["x"], xyz["y"], xyz["z"]] == pytest.approx([24.4, 23.7, 20.2], abs=0.05)
+
+
+def test_the_estimate_takes_three_rounds():
+    """GU_estimateSigma3D runs three rounds (the lab's code, read): on the halo bead the third
+    round still moves the estimate (the z window grows from 13 to 15 voxels), the fourth does
+    not (oracle case estimate_sigma.halo_bead)"""
+    v = halo_bead().astype(np.float64)
+    got = []
+    for rounds in (None, 2, 3, 4):
+        detect.clear_speedup_cache()
+        kw = {} if rounds is None else {"rounds": rounds}
+        sxy, sz, _, _, _ = sigma.estimate_sigma3d(v, **kw)
+        got.append((sxy, sz))
+    default, two, three, four = got
+    assert default == three
+    assert four == pytest.approx(three, rel=1e-6)
+    assert abs(two[1] - three[1]) > 1e-2 * three[1]
 
 
 def test_the_bead_image_reads_zeros_as_nan():

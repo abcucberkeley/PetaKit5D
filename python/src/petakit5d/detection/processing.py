@@ -915,12 +915,20 @@ def motion_analysis(tr: dict) -> dict | np.ndarray:
 # -- rotateTracks3D -------------------------------------------------------------------------------
 
 
-def rotation_matrix(size_zyx, angle: float, z_aniso: float) -> list[list[float]]:
+def rotation_matrix(
+    size_zyx, angle: float, z_aniso: float, *, mirrored: bool = False
+) -> list[list[float]]:
     """rotateTracks3D's affine matrix (MATLAB's row-vector convention, ``[x y z 1] * T``) for a
     DS volume of ``(nz, ny, nx)``: the volume's centre to the origin, z scaled by ``z_aniso``,
     the rotation by ``angle`` degrees in the x-z plane, then the centre of the rotated box
     ``round([nx cos + nz zAniso sin, nx sin + nz zAniso cos])`` (measured on 7 geometries, bit
-    for bit; MATLAB's cosine and sine, its 4 x 4 product)."""
+    for bit; MATLAB's cosine and sine, its 4 x 4 product).
+
+    ``mirrored``: the rotation by ``-angle`` about the same centres, for a reversed scan
+    deskewed in its direction: it puts the tracks where ``XR_deskewRotateFrame`` with
+    ``reverse`` and ``rotate`` puts the beads (``docs/parity/detection.md`` W20). It is the
+    matrix's z mirrored on both sides, in the DS volume (``nz + 1 - z``) and in the rotated box
+    (``wz + 1 - z``); rotateTracks3D itself always rotates by ``angle``."""
     from petakit5d.deskew_rotate.geometry import _chain, _cos, _eye, _round, _sin, _translation
 
     nz, _ny, nx = (int(v) for v in size_zyx)
@@ -932,7 +940,8 @@ def rotation_matrix(size_zyx, angle: float, z_aniso: float) -> list[list[float]]
     t1 = _translation([-(nx + 1) / 2, 0.0, -(nz + 1) / 2])
     sc = _eye()
     sc[2][2] = S
-    r = [[c, 0.0, s, 0.0], [0.0, 1.0, 0.0, 0.0], [-s, 0.0, c, 0.0], [0.0, 0.0, 0.0, 1.0]]
+    rs = -s if mirrored else s
+    r = [[c, 0.0, rs, 0.0], [0.0, 1.0, 0.0, 0.0], [-rs, 0.0, c, 0.0], [0.0, 0.0, 0.0, 1.0]]
     t2 = _translation([(wx + 1) / 2, 0.0, (wz + 1) / 2])
     return _chain(t1, sc, r, t2)
 
@@ -946,11 +955,14 @@ def _forward(T, x, y, z):
     return out
 
 
-def rotated_tracks(tracks: list[dict], size_zyx, angle: float, z_aniso: float) -> list[dict]:
+def rotated_tracks(
+    tracks: list[dict], size_zyx, angle: float, z_aniso: float, *, mirrored: bool = False
+) -> list[dict]:
     """``rotateTracks3D`` (``Crop`` false): copies of the processed tracks with x and z (every
     channel, the buffers too) rotated into the deskewed-rotated frame; y and every other field
-    unchanged, but for a field ``Y`` MATLAB adds to the end buffer, the rotated y (measured)"""
-    T = rotation_matrix(size_zyx, angle, z_aniso)
+    unchanged, but for a field ``Y`` MATLAB adds to the end buffer, the rotated y (measured).
+    ``mirrored``: by the mirrored angle (``rotation_matrix``), for a reversed scan."""
+    T = rotation_matrix(size_zyx, angle, z_aniso, mirrored=mirrored)
     out = []
     for tr in tracks:
         t = dict(tr)
@@ -1298,12 +1310,25 @@ def _rotate_v73(src: str, dst: str, T) -> None:
                     rotate(obj, b == "endBuffer")
 
 
-def rotate_tracks(data, *, overwrite: bool = False, crop: bool = False, results_path=None) -> None:
+def rotate_tracks(
+    data,
+    *,
+    overwrite: bool = False,
+    crop: bool = False,
+    results_path=None,
+    matlab_quirks: bool = False,
+) -> None:
     """``rotateTracks3D(data, 'Crop', false, ...)``: ``<results>/RotatedTracks.mat`` (v7.3,
     ``tracks``) from ``<results>/ProcessedTracks.mat``, the geometry from the first DS frame of
-    channel 1 and the movie's ``angle`` and ``zAniso`` (stage-scan, not reversed: measured). A
-    v7.3 file of two or more tracks is rotated in a copy (``_rotate_v73``), any other file
-    through ``rotated_tracks``."""
+    channel 1 and the movie's ``angle`` and ``zAniso`` (stage scans: measured). A v7.3 file of
+    two or more tracks is rotated in a copy (``_rotate_v73``), any other file through
+    ``rotated_tracks``.
+
+    A reversed scan (the movie's ``reversed``), deskewed in its direction as the port deskews
+    it (W2), is rotated by the mirrored angle (``rotation_matrix``), which puts its tracks
+    where ``XR_deskewRotateFrame`` with ``reverse`` and ``rotate`` puts the beads. MATLAB's
+    rotateTracks3D does not read ``reversed`` and rotates every scan by the angle;
+    ``matlab_quirks`` gives that output (``docs/parity/detection.md`` W20)."""
     from petakit5d.io import read_tiff
     from petakit5d.io.matfile import StructArray, mat_version, read_mat, write_mat
 
@@ -1315,12 +1340,11 @@ def rotate_tracks(data, *, overwrite: bool = False, crop: bool = False, results_
     elif isinstance(results_path, str):
         results_path = [results_path]
     for k, m in enumerate(movies):
-        if bool(np.asarray(m.get("objectiveScan", False)).ravel()[0]) or bool(
-            np.asarray(m.get("reversed", False)).ravel()[0]
-        ):
-            raise NotImplementedError(
-                "rotateTracks3D: objective scans and reversed scans are not ported"
-            )
+        if bool(np.asarray(m.get("objectiveScan", False)).ravel()[0]):
+            raise NotImplementedError("rotateTracks3D: objective scans are not ported")
+        mirrored = bool(np.asarray(m.get("reversed", False)).ravel()[0]) and not bool(
+            np.asarray(matlab_quirks).ravel()[0]
+        )
         rp = str(results_path[k])
         out = os.path.join(rp, "RotatedTracks.mat")
         if os.path.exists(out) and not overwrite:
@@ -1332,11 +1356,11 @@ def rotate_tracks(data, *, overwrite: bool = False, crop: bool = False, results_
         za = float(np.asarray(m["zAniso"]).ravel()[0])
         tmp = out + ".tmp_" + str(os.getpid())
         if mat_version(src) == "7.3" and _has_tracks_struct(src):
-            _rotate_v73(src, tmp, rotation_matrix(size, angle, za))
+            _rotate_v73(src, tmp, rotation_matrix(size, angle, za, mirrored=mirrored))
         else:
             pt = read_mat(src, "tracks")["tracks"]
             pt = [pt] if isinstance(pt, dict) else list(pt)
-            rows = rotated_tracks(pt, size, angle, za)
+            rows = rotated_tracks(pt, size, angle, za, mirrored=mirrored)
             fields = tuple(pt[0].keys()) if pt else TRACK_FIELDS
             st = (
                 StructArray((1, len(rows)), fields, rows)

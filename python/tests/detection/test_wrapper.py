@@ -577,12 +577,15 @@ def test_tracking_folders_after_a_one_frame_movie(tmp_path, calls):
     wrapper.run_detection_tracking(d, sigma=((1.3, 1.5),), parallel_method="none")
     got = [(c[1][0]["source"], c[2]["results_path"]) for c in calls if c[0] in TRACKING]
     assert got == [(d[1].source, [paths[1]])] * 3
+    # the rotation of reversed scans by the mirrored angle (W20) unless matlab_quirks
+    assert [c[2]["matlab_quirks"] for c in calls if c[0] == "rotate_tracks"] == [False]
     calls.clear()
     # MATLAB passes the folders of all movies: its first (only) movie gets the first folder
     wrapper.run_detection_tracking(d, sigma=((1.3, 1.5),), parallel_method="none",
                                    matlab_quirks=True)  # fmt: skip
     got = [(c[1][0]["source"], c[2]["results_path"]) for c in calls if c[0] in TRACKING]
     assert got == [(d[1].source, paths)] * 3
+    assert [c[2]["matlab_quirks"] for c in calls if c[0] == "rotate_tracks"] == [True]
 
 
 def test_reversed_scans_deskewed_in_their_direction(tmp_path, calls, monkeypatch):
@@ -649,22 +652,34 @@ def test_apath_takes_the_last_folders(condition, calls, tmp_path):
 
 
 def test_stage_homes(monkeypatch):
-    """the detection stage is detection.run's run_detection (XR_runDetection3D); the
-    frame-parallel one (the default parallel_method) is not ported and says what to use"""
+    """the detection stages are detection.run's run_detection (XR_runDetection3D) and
+    run_detection_frame_parallel (XR_runDetection3D_frame_parallel, the default
+    parallel_method's); a frame-parallel stage that is not there says what to use"""
     from petakit5d.detection import run
 
     monkeypatch.setitem(wrapper.STAGES, "run_detection", None)
     monkeypatch.setitem(wrapper.STAGES, "run_detection_frame_parallel", None)
     assert wrapper._stage("run_detection") is run.run_detection
-    if not hasattr(run, "run_detection_frame_parallel"):
-        with pytest.raises(NotImplementedError, match="parallel_method='parfor'"):
-            wrapper._stage("run_detection_frame_parallel")
+    assert wrapper._stage("run_detection_frame_parallel") is run.run_detection_frame_parallel
+    monkeypatch.setitem(
+        wrapper._STAGE_HOMES,
+        "run_detection_frame_parallel",
+        ("petakit5d.detection.run", "no_such_stage", "C02"),
+    )
+    with pytest.raises(NotImplementedError, match="parallel_method='parfor'"):
+        wrapper._stage("run_detection_frame_parallel")
 
 
 def test_missing_stage_raises(condition, monkeypatch):
-    # the first stage of the Linux order, the frame-parallel detection, is not ported; Windows
-    # takes MATLAB's parfor path (ispc), whose run_detection is, so take the Linux order everywhere
+    # a stage its home does not have (here the first of the Linux order, the frame-parallel
+    # detection) raises, naming its task; Windows takes MATLAB's parfor path (ispc), so take the
+    # Linux order everywhere
     monkeypatch.setattr(wrapper, "_is_pc", lambda: False)
+    monkeypatch.setitem(
+        wrapper._STAGE_HOMES,
+        "run_detection_frame_parallel",
+        ("petakit5d.detection.run", "no_such_stage", "C02"),
+    )
     old = dict(wrapper.STAGES)
     try:
         wrapper.STAGES.update(dict.fromkeys(wrapper.STAGES))
