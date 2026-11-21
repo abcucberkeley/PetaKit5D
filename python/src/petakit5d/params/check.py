@@ -5,6 +5,8 @@ agree; validator texts agree; defaults agree (by value, or by text for defaults 
 literals); the inputParser settings agree; and where the function has an mcc parser, its
 string conversions and defaults agree with the spec (the command line follows them). The
 MATLAB side comes from a tree (the oracle tree on the cluster) or from a stored extract (CI).
+Of third-party MATLAB code only the interface is kept (params/provenance.py): its validators
+are withheld, and names, kinds, order and defaults are compared.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from typing import Any
 
 from petakit5d.params.literal import LiteralError, parse
 from petakit5d.params.matlab_source import MatlabFunction, MatlabParam, extract_tree
+from petakit5d.params.provenance import interface_only
 from petakit5d.params.spec import _MISSING, FunctionSpec, ParamSpec, RegistryError
 from petakit5d.params.values import to_python
 
@@ -177,12 +180,13 @@ def check_spec(spec: FunctionSpec, fn: MatlabFunction | None) -> list[str]:
             continue
         if p.kind != m.kind:
             out.append(f"{where}: {p.kind} here, {m.kind} in MATLAB")
-        if not _same_text(p.validator, m.validator):
+        # a withheld validator (third-party code) is not compared
+        if not m.withheld and not _same_text(p.validator, m.validator):
             out.append(f"{where}: validator {p.validator!r}, MATLAB has {m.validator!r}")
         if p.kind != "required":
             out.extend(_check_default(spec, p, m))
     if not any(m.kind in ("positional", "parameter") for m in theirs) and any(
-        m.kind == "optional" and not m.validator for m in theirs
+        m.kind == "optional" and not (m.validator or m.withheld) for m in theirs
     ):
         # (the MATLAB-name layer takes text by position in a function without name-value
         # parameters, as MATLAB's functions without an inputParser do)
@@ -275,12 +279,13 @@ def write_extract(
     """Extract the inputParser blocks of ``names`` from a MATLAB tree into a JSON file.
 
     Texts that match ``scan`` (``site_pattern()``) are stored as
-    ``<site value sha256:...>`` and compared by that hash.
+    ``<site value sha256:...>`` and compared by that hash. Of third-party code only the
+    interface is stored (``provenance.interface_only``).
     """
     tree = extract_tree(root, set(names))
     funcs = {}
     for name in sorted(tree, key=str.lower):
-        d = tree[name].to_json()
+        d = interface_only(tree[name]).to_json()
         d["notes"] = [n for n in d["notes"] if not scan or not scan.search(n)]
         for p in d["params"]:
             p["default"] = _redact(p["default"], scan)
@@ -294,7 +299,13 @@ def write_extract(
             }
         funcs[name] = d
     data = {"version": EXTRACT_VERSION, "oracle_commit": commit, "functions": funcs}
-    Path(out).write_text(
+    Path(out).write_text(extract_text(funcs, commit))
+    return data
+
+
+def extract_text(funcs: dict[str, dict[str, Any]], commit: str = "") -> str:
+    """The stored extract's text: one function per line, in the order given."""
+    return (
         "{"
         + f'"version": {EXTRACT_VERSION}, "oracle_commit": {json.dumps(commit)}, "functions": {{\n'
         + ",\n".join(
@@ -302,7 +313,6 @@ def write_extract(
         )
         + "\n}}\n"
     )
-    return data
 
 
 def read_extract(path: str | Path) -> dict[str, MatlabFunction]:

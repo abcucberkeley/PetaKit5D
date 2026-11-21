@@ -4,7 +4,9 @@
     python tools/gen_mapping.py --check    exit 1 if the file is not what the registry gives
 
 Run from python/ with PYTHONPATH=src (or the package installed). The parameters of planned
-functions come from the stored inputParser extract (tools/check_registry.py extract).
+functions come from the stored inputParser extract (tools/check_registry.py extract). Where
+the extract withholds a validator (third-party MATLAB code), the table shows
+"(third-party: not shown)", for registered functions too.
 """
 
 from __future__ import annotations
