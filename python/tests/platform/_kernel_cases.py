@@ -1755,6 +1755,101 @@ def _():
     return out + [Co.corr(s, s * np.float32(0.5) + single("crs2", (500, 1))), Co.corr(s, d)]
 
 
+@case("hist.hist")
+def _():
+    """hist with bin centers as the lifetime analysis calls it (lifetimes on the histogram's times,
+    the starts per frame); values on the edges (the lower bin) and one ulp beside them, NaN (left
+    out), both infinities (the end bins), signed zeros, uneven centers, one center, integer and
+    logical data, matrix columns (MATLAB's layout), no data"""
+    from petakit5d.matlabcompat import hist as Hi
+
+    t = np.arange(3.0, 51.0) * 2.0
+    out = [Hi.hist(np.floor(uniform("hil", (400,), 1.0, 61.0)) * 2.0, t)]
+    out.append(Hi.hist(np.floor(uniform("hip", (700,), 1.0, 61.0)), np.arange(1.0, 61.0)))
+    c = np.array([1.0, 2.0, 4.0, 7.0, 11.0])
+    y = specials(double("hiy", (300,), 4.0) + 5.0, every=29, payload=True)
+    on = np.array([1.5, 3.0, 5.5, 9.0, 3.0000000000000004, 5.4999999999999991, -0.0, 0.0])
+    out += [Hi.hist(y, c), Hi.hist(on, c), Hi.hist(y, np.array([-1.0, 0.0, 2.5, 3.0, 12.0]))]
+    out += [Hi.hist(ints("hii", (200,), -5, 20, np.int16), c), Hi.hist(y, np.array([3.0]))]
+    out += [Hi.hist(logical("hib", (50,)), np.array([0.0, 1.0])), Hi.hist(np.zeros(0), c)]
+    return out + [Hi.hist(double("him", (40, 3), 3.0) + 5.0, c, matlab_layout=True)]
+
+
+@case("special.erf_erfc_normcdf")
+def _():
+    """erf and erfc (fdlibm's s_erf.c with fdlibm's exp) on each branch and on both sides of its
+    edges (2^-28, 0.84375, 1.25, 1/0.35, 6, 28), normal and uniform values to the tails, signed
+    zeros, subnormals, both infinities and NaN (its bits kept); normcdf as the lifetime analysis
+    calls it (values against a mode's mu and sigma, and the standard one)"""
+    from petakit5d.matlabcompat import special as Sp
+
+    e = np.array([2.0**-28, 0.84375, 1.25, 1 / 0.35, 6.0, 28.0, 26.5])
+    edges = np.concatenate([e, np.nextafter(e, 0.0), np.nextafter(e, np.inf), [0.0, -0.0]])
+    v = [edges, -edges, double("efn", (3000,), 2.0), uniform("efu", (2000,), -30.0, 30.0)]
+    x = specials(np.concatenate(v), every=113, payload=True)
+    out = [Sp.erf(x), Sp.erfc(x), Sp.erf(x[:96].reshape(8, 12)), Sp.erfc(np.int16(3))]
+    a = specials(double("ncd", (2000,), 6.0) + 9.0, every=97, payload=True)
+    return out + [Sp.normcdf(a, 8.92968222709834, 0.7999357568764726), Sp.normcdf(x, 0.0, 1.0)]
+
+
+@case("optim.lsqnonlin")
+def _():
+    """lsqnonlin (trust-region-reflective with bounds) as the lifetime analysis calls it: the mode
+    of an empirical CDF below its mode (3 parameters, a non-smooth objective; fitGaussianModeToCDF)
+    and a scale fit of two empirical CDFs through interp1 (scaleEDFs); smooth problems: an
+    exponential decay with and without an active bound, Rosenbrock's function at a bound, a
+    linear one at its upper bound; every output (x, resnorm, residual, exit flag, iterations,
+    evaluations, optimality, step) and the error of an undefined start"""
+    from petakit5d.matlabcompat import elementary as El
+    from petakit5d.matlabcompat import optim as Op
+    from petakit5d.matlabcompat import special as Sp
+    from petakit5d.matlabcompat.interp import interp1
+
+    def mode(p, x, f):
+        F = (p[0] * (0.5 * (1 + Sp.erf((x - p[1]) / math.sqrt(2.0) / p[2]))) - f) / x.size
+        F[x > p[1]] = 0
+        return F
+
+    def scale(p, x, f, ref, grid):
+        y = interp1(x, f, grid[1:] / p[0])
+        F = np.concatenate(([0.0], p[1] + (1 - p[1]) * y - ref[1:]))
+        F[np.isnan(F)] = 0
+        return F
+
+    def decay(p, t, y):
+        return p[0] * El.exp(-p[1] * t) - y
+
+    xm = np.sort(double("lqm", (300,), 2.0) + 10.0)
+    fm = np.arange(1.0, 301.0) / 300
+    xa = np.unique(El.exp(3.0 + double("lqa", (250,), 1.0)))
+    xb = np.unique(1.3 * El.exp(3.0 + double("lqb", (200,), 1.0)))
+    fa, fb = np.arange(1.0, xa.size + 1) / xa.size, np.arange(1.0, xb.size + 1) / xb.size
+    grid = np.linspace(xa[2], xa[-3], 1000)
+    ref = np.concatenate(([0.0], interp1(xa, fa, grid[1:])))
+    t = np.arange(20.0) / 4
+    y = 3.0 * El.exp(-0.7 * t) + 0.05 * np.where(np.arange(20) % 3 == 0, 1.0, -0.5)
+    problems = [
+        (mode, [0.5, 10.0, 1.0], [0.0, 0.0, 0.0], [1.0, np.inf, np.inf], (xm, fm), 1e-8),
+        (scale, [1.0, 0.0], [0.0, -1.0], [np.inf, 1.0], (xb, fb, ref, grid), 1e-6),
+        (decay, [1.0, 0.1], [0.0, 0.0], [np.inf, 10.0], (t, y), 1e-8),
+        (decay, [1.0, 0.1], [0.0, 0.0], [2.5, 10.0], (t, y), 1e-8),
+        (lambda p: np.array([10.0 * (p[1] - p[0] * p[0]), 1.0 - p[0]]), [-1.2, 1.0],
+         [-2.0, -2.0], [0.5, 2.0], (), 1e-10),
+        (lambda p: np.array([p[0] - 10.0, 2.0 * p[1] + 1.0]), [0.0, 0.0], [-np.inf, -5.0],
+         [1.0, np.inf], (), 1e-12),
+    ]  # fmt: skip
+    out = []
+    for fun, x0, lb, ub, args, tl in problems:
+        r = Op.lsqnonlin(fun, x0, lb, ub, args, tol_fun=tl, tol_x=tl)
+        out.append([r.x, r.resnorm, r.residual, r.exitflag, r.iterations, r.func_count])
+        out[-1] += [r.first_order_opt, r.step_size]
+    try:
+        Op.lsqnonlin(lambda p: np.array([NAN, p[0]]), [1.0])
+    except Op.LsqnonlinError as err:
+        out.append(err.identifier)
+    return out
+
+
 # -- special values through weighted sums ------------------------------------------------------
 # Inf and NaN in float data meet zero weights and opposite infinities in the interpolations and
 # filters: invalid operations, whose NaN has the sign bit set on x86 and clear on ARM (the

@@ -84,37 +84,80 @@ nothing elsewhere, and the Linux, macOS and MSVC builds compile the code they co
 Gold 6442Y, AVX-512), with the two wheels of one commit built by the wheel workflow, Python 3.12:
 
 - **MinGW-w64:** all 65 pinned cases of `tests/platform/test_kernel_hashes.py` give Linux's
-  digests (the platform, smoke and OpenMP-runtime tests: 196 passed, 47 skipped, the skips of
-  Linux x86-64's builds; the same with the cp311 wheel on Python 3.11). Of the 9 cases recorded, not pinned, 6
-  give Linux's bits too: the FFTs (pocketfft's and the half spectra), the normalized
-  cross-correlation, the FFT-based deconvolution and the least squares. The other 3 differ where
-  the C library or NumPy computes: the Anderson-Darling statistics (`erf`, `erfc`, `log`: 3 and
-  3 values) and edgetaper (NumPy's `np.fft` and complex `np.abs`).
+  digests (the platform, smoke and OpenMP-runtime tests: 196 passed, 47 skipped, as Linux
+  x86-64's builds skip; the same with the cp311 wheel on Python 3.11). Of the 9 cases recorded,
+  not pinned, 6 give Linux's bits too: the FFTs (`fft.matlab_fft`, `fft.half_spectra`,
+  `specials.fft_and_decon`), the normalized cross-correlation, the deconvolution's OTF and
+  Richardson-Lucy, and the least squares. The other 3 differ where the C library or NumPy
+  computes: the Anderson-Darling statistics (`erf`, `erfc`, `log`: 3 and 3 values) and edgetaper
+  (NumPy's `np.fft` and complex `np.abs`).
 - **MSVC:** 64 of the 65 (`detection.cr_exp` fails: Windows 10's `ldexp`, [platforms](../platforms.md),
   "What differs by system"), 187 passed, 55 skipped, 1 failed; 2 of the 9 recorded cases give
   Linux's bits.
 
-On GitHub's windows-2025 runners: see "What CI showed".
+With the SSE2 `nearbyint` and `ldexp` (above) the MinGW-w64 wheel gives the bits of the one
+without them in all 74 cases, and its smoke, OpenMP-runtime, platform and detection tests pass
+there (657 passed, 151 skipped). On GitHub's windows-2025 runners: see "What CI showed".
 
 ## Speed
 
 The two wheels of one commit, built by the wheel workflow, on one Windows 10 machine (8 vCPUs of a
-Xeon Gold 6442Y), through `petakit5d.testing.bench`: one process per round, the two wheels'
-processes in alternating order, a warm-up round and 5 rounds; each operation timed 3 to 5 times
-per round at 1 thread and at 8. The table gives the median seconds and MinGW-w64's time over
-MSVC's (the median of the rounds' paired ratios; "~" where the two wheels' round medians
-overlap).
+Xeon Gold 6442Y), measured 2026-11-21 through `petakit5d.testing.bench`: one process per round,
+the wheels' processes in alternating order, a warm-up round and 5 rounds, each operation timed 3
+to 5 times a round at 1 thread and at 8. The detection fits were measured again with the SSE2
+`nearbyint` and `ldexp` above (a wheel of this tree built there with the same toolchain), against
+both wheels in the same rounds. The table gives the
+medians in seconds and MinGW-w64's time over MSVC's (the median of the rounds' paired ratios; "~"
+where the two wheels' round medians overlap).
 
-SPEED_TABLE_TBD
+| family | operation | 1 thread: MSVC s | MinGW-w64 s | MinGW/MSVC | 8 threads: MSVC s | MinGW-w64 s | MinGW/MSVC |
+|---|---|---|---|---|---|---|---|
+| decon | Richardson-Lucy, 10 iterations, 81 x 320 x 320, PSF 41 x 31 x 31 | 4.41 | 1.89 | 0.43 | 0.795 | 0.404 | 0.52 |
+| decon | OMW, 2 iterations, same data | 0.827 | 0.324 | 0.39 | 0.153 | 0.0699 | 0.49 |
+| deskew/rotate | deskew, uint16, 301 x 256 x 512 | 0.786 | 0.53 | 0.67 | 0.118 | 0.0906 | 0.77 |
+| deskew/rotate | deskew and rotate, same data | 0.252 | 0.232 | ~0.92 | 0.0713 | 0.0707 | ~1.01 |
+| filters | imgaussfilt3, sigma 1, single, 400 x 512 x 512 | 6.31 | 0.938 | 0.15 | 0.907 | 0.267 | 0.28 |
+| filters | imgaussfilt3, sigma 2.5, uint16, same size | 13.6 | 1.94 | 0.14 | 1.97 | 0.535 | 0.26 |
+| filters | imgaussfilt, sigma 100, 1024^2 (spatial) | 3.15 | 0.157 | 0.05 | 0.424 | 0.0319 | 0.08 |
+| filters | imgaussfilt, sigma 100, 2048^2 (frequency domain) | 0.324 | 0.165 | 0.49 | 0.107 | 0.0838 | 0.80 |
+| FFT | fft along one axis, single, 96 x 512 x 512 | 0.212 | 0.157 | 0.77 | 0.0452 | 0.0368 | 0.83 |
+| FFT | fftn, single, 96 x 512 x 512 | 0.559 | 0.373 | 0.65 | 0.0985 | 0.0934 | ~0.97 |
+| FFT | ifftn, complex single, 96 x 512 x 512 | 0.699 | 0.455 | 0.67 | 0.117 | 0.108 | ~0.95 |
+| FFT | half spectrum, forward, single, 96 x 512 x 512 | 0.338 | 0.146 | 0.44 | 0.0524 | 0.0389 | 0.73 |
+| FFT | half spectrum, inverse | 0.362 | 0.17 | 0.47 | 0.0844 | 0.0653 | 0.77 |
+| resize | imresize3 to half, cubic, uint16 500 x 512 x 1800 | 2.9 | 2.12 | 0.73 | 0.419 | 0.331 | 0.80 |
+| resize | imresize3 to half, linear | 2.32 | 1.43 | 0.61 | 0.358 | 0.253 | 0.70 |
+| resize | imresize3, z twice, cubic | 5.22 | 3.19 | 0.62 | 0.717 | 0.464 | 0.64 |
+| resize | imresize3, z twice, linear | 4.88 | 2.33 | 0.48 | 0.67 | 0.359 | 0.54 |
+| resize | imresize3, z half, linear | 1.31 | 0.779 | 0.59 | 0.194 | 0.124 | 0.65 |
+| resize | imresize3_fast to half, cubic | 2.87 | 2.14 | 0.75 | 0.429 | 0.331 | 0.80 |
+| resize | imresize3_fast, z twice, cubic | 5.28 | 3.15 | 0.59 | 0.747 | 0.471 | 0.61 |
+| detection fits | fitGaussian3D mex, xyzAsrc, 3000 windows of 9^3 | 1.36 | 1.36 | ~1.00 | 0.198 | 0.196 | ~1.00 |
+| detection fits | fitGaussian3D mex, xyzAc | 1.35 | 1.35 | ~1.01 | 0.191 | 0.19 | ~1.00 |
+| detection fits | fitGaussian3D mex, Ac | 0.354 | 0.435 | 1.23 | 0.0695 | 0.0718 | ~1.04 |
+| detection fits | CD_Newton fit | 1.07 | 1.05 | ~1.00 | 0.151 | 0.156 | ~1.03 |
+| morphology | imerode, disk 11, 500 x 512 x 1800 logical | 0.462 | 0.525 | 1.17 | 0.0736 | 0.0921 | ~1.21 |
+| morphology | bwdist, 2048^2 | 0.0511 | 0.0425 | 0.85 | 0.0079 | 0.0076 | ~0.94 |
+| morphology | medfilt3 3 x 3 x 3, single, 101 x 128 x 128 | 0.0441 | 0.226 | 5.29 | 0.0068 | 0.0332 | 4.70 |
+| morphology | bwlabeln 26, 200 x 512 x 512 | 0.779 | 0.745 | ~0.95 | 0.631 | 0.65 | ~1.03 |
+| morphology | bwconncomp 26, same | 0.869 | 0.789 | ~0.94 | 0.332 | 0.326 | ~1.01 |
 
 - **Faster with MinGW-w64:** the kernels where GCC's vector extensions and the run-time
-  instruction-set dispatch apply, which MSVC builds without: the Gaussian filters' fused taps (the
-  FMA instruction; MSVC calls the C library's `fma` per tap), pocketfft's vector lines (MSVC: one
-  line at a time), the deconvolutions (FFTs and the element-wise vector loops), the deskew.
-- **Slower with MinGW-w64:** the 3 x 3 x 3 median filter's network and binary erosion, whose
-  GCC code is Linux's: GCC compiles the network's 16-lane vectors into scalar code, while MSVC
-  vectorizes the lane-by-lane loops it gets; a change to those kernels would speed up Linux too
-  (outside this record). DETECTION_TBD
+  instruction-set dispatch apply, which MSVC builds without: the Gaussian filters' fused taps
+  (the FMA instruction, where MSVC's build calls the C library's `fma` for each tap: up to 20
+  times as fast), the deconvolutions (2 to 2.6 times at 1 thread, 2 at 8), pocketfft's vector lines
+  (MSVC transforms one line at a time), the resize kernels and the deskew.
+- **Slower with MinGW-w64:** the 3 x 3 x 3 median filter (5 times) and binary erosion (1.2),
+  whose GCC code is Linux's: GCC compiles the median network's 16-lane vectors into scalar
+  `minss` and `maxss`, while MSVC vectorizes the lane-by-lane loops it gets instead. A change to
+  those kernels would make Linux faster too (outside this record).
+- **The detection fits:** even, but for the fits of amplitude and background alone at 1 thread
+  (1.23), whose time is mostly the Anderson-Darling test: MinGW-w64's `erf` and `log` take 62 and
+  29 ns a call at 64 bits, the UCRT's 18 and 4. The UCRT's would make those fits faster than
+  MSVC's build, but give the UCRT's bits there instead of results closer to glibc's (in the two
+  recorded cases of the statistic, 59 values differ from Linux's with MSVC's build, 6 with
+  MinGW-w64's), which this build does not do. Without the SSE2 `nearbyint` and `ldexp` the fits
+  took 1.11 to 1.35 times MSVC's time at 1 thread.
 
 ## What CI showed
 
@@ -124,7 +167,16 @@ The trial of 2026-11-21 (the wheel and Python workflows on GitHub's runners, bot
   checked the abi3 and cp311 wheels in 6.5 minutes (MSVC: 7.9) and the add-on in 3.7 (MSVC: 7.5).
   The MinGW-w64 wheels carry `libgomp-1.dll`, `libwinpthread-1.dll` and `libgcc_s_seh-1.dll` with
   the SHA-256 of the cpp-tiff wheels' copies; check_wheel found nothing in any wheel.
-- **Python** (the source build and the full test suite): CI_TBD
+- **Python** (the source build with pip and the whole CPU suite, windows-2025): every Windows job
+  passed, Python 3.12 and 3.14: MinGW-w64 27,432 passed, 6,019 skipped, 15 xfailed (31 to 32
+  minutes of tests); MSVC 27,421 passed, 6,030 skipped, 15 xfailed (32 to 34). MinGW-w64 runs 11
+  tests that MSVC's build skips: the instruction-set dispatch's (filters, resize, unmix), the NaN
+  rules of the filters' fused chains, and the one `libgomp-1.dll` with the I/O packages.
+- **A second trial** with the SSE2 `nearbyint` and `ldexp`: the wheels again all green, and the
+  same suites but for one oracle case in MinGW-w64's Python 3.12 job whose run drew a Windows uuid
+  (4 characters) equal to a value of the reference, which the comparison then masked on one side
+  only: the test harness's, not the toolchain's (the same case passed in the other three Windows
+  jobs, and in that job's re-run: 27,433 passed).
 
 ## Consequences
 
@@ -136,6 +188,8 @@ The trial of 2026-11-21 (the wheel and Python workflows on GitHub's runners, bot
   where the toolchain is MinGW-builds' GCC 12.2.0, and the release checks require them in a wheel
   whose binaries GNU ld linked, at those exact paths, which they leave out of their search for
   folders and site names (THIRD_PARTY_NOTICES.md).
+- The MinGW-w64 wheels are larger: 5.9 MB against 4.2 for the abi3 wheel (the modules 10.3 MB
+  against 5.6 unpacked: each links libstdc++ and its vector and dispatch code).
 - A process can mix a MinGW-built port with other packages' `libgomp-1.dll` of another GCC: the
   first loaded serves all, and libgomp is backward compatible (the modules call the entry points of
   GCC 4.9 and later).

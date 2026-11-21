@@ -239,6 +239,7 @@ b.npz` measure the difference.
 | Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 65 | the same bits |
 | macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | the same bits (before the filters' and the deskew kernels' NaN fix the 2 `specials.*_infinities` cases differed in NaN signs only); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
 | Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | the same bits (the CI, measured 2026-11-19: see "How Windows is tested"); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
+| Windows x86-64 (GitHub's windows-2025), MinGW-w64's GCC 12.2 and MSVC, Python 3.12 and 3.14 | 65 | the same bits with both toolchains (the CI of 2026-11-21: all 77 tests of test_kernel_hashes.py passed in each job) |
 | Windows x86-64 with MinGW-w64's GCC 12.2 (a Windows 10 22H2 machine, Xeon Gold 6442Y, AVX-512), Python 3.12 (abi3 wheel) and 3.11 | 65 | the same bits; of the 9 recorded cases, 6 give Linux's bits too (the table below); measured 2026-11-21 | |
 | Windows x86-64 with MSVC, the same machine and wheel workflow run | 65 | the same bits but `detection.cr_exp` (Windows 10's `ldexp`, see "What differs by system"); of the 9 recorded cases, 2 |
 
@@ -336,11 +337,16 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
 - **On GitHub's runners only:** windows-2025, Python 3.12 and 3.14, the port built from source
   with MSVC as `pip install` builds it (`.[test,figures,n5]`), and the whole CPU suite
   (`pytest -v --timeout=900`), on every push. The job gates since 2026-11-14 (after two green
-  runs in a row). No local Windows machine runs the port's tests routinely.
+  runs in a row). The same jobs with MinGW-w64's GCC (`tools/get_mingw.sh`; since 2026-11-21,
+  [decisions/0011](decisions/0011-windows-toolchain.md)) run the same suite, and 11 tests that
+  MSVC's skip: the instruction-set dispatch's (filters, resize, unmix), the NaN rules of the
+  filters' fused chains, and the one libgomp-1.dll with the I/O packages. No local Windows machine
+  runs the port's tests routinely.
 - **Windows 10** (one run of the suite on a Windows 10 22H2 machine, 2026-11-19, with the
   libraries' 1.8.0 wheels): the results of the runners but for two differences of that machine,
-  its C runtime's `ldexp` (above; the port no longer depends on it) and long paths, which were
-  off there (install guide, "Windows: long paths").
+  its C runtime's `ldexp` (above; with MSVC the detection fits' correctly rounded exp still
+  depends on it, not with MinGW-w64) and long paths, which were off there (install guide,
+  "Windows: long paths").
 - **What the CI shows** besides the tests: the build information (compiler, flags, OpenMP
   runtime), the CPU and NumPy's SIMD dispatch and OpenBLAS kernels, the OpenMP runtimes found,
   and the "Oracle key probe (Windows)" step (tests/platform/key_probe.py), which prints what

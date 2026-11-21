@@ -335,6 +335,9 @@ The checks after the filter:
    release commit) is green: every wheel of the matrix and of the add-on passes its test command
    and the checks; one Linux wheel installed into a fresh environment on another machine passes
    the full CPU suite; the wheels that are published are that run's artifacts.
+   - **The Windows toolchain (user):** the wheels of MSVC or of MinGW-w64's GCC (the workflow builds
+     both: artifacts `...-Windows-X64` and `...-Windows-X64-mingw`), on the measurements of
+     [decisions/0011](decisions/0011-windows-toolchain.md); the other one's matrix entries then go.
 5. **The source distribution:** the same run's `sdist` job: no `cpp/fft/exact/`, no build
    folders, and a wheel built from it alone passes the smoke tests.
 6. **The licenses:** the tables above against the installed packages' metadata; new bundled
