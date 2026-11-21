@@ -1,0 +1,30 @@
+{
+ "name": "detection_c02c",
+ "description": "C02c: XR_runDetection3D_frame_parallel ('lowSNR' without the background correction, XR_runDetTrack3d's detection) on the first 4 frames of both channels of an experiment of the point-detection demo (the experiment folder from PK5D_C02C_EX: its raw and DS frames, settings file and Detection3D.mat for the PSF sigma), MATLAB against run_detection_frame_parallel at 4 threads, the results removed before each run (untimed). MATLAB starts with its JVM, as XR_runDetTrack3d's session does (the condition loader needs it).",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": [
+  "{python} {src}/benchmarks/detection/detection_c02c_data.py {env[PK5D_C02C_EX]} {work} 4"
+ ],
+ "variants": [
+  {
+   "id": "ml_t4",
+   "impl": "matlab",
+   "paths": ["benchmarks/detection", "benchmarks/common"],
+   "flags": ["-nodisplay", "-nosplash", "-nodesktop"],
+   "env": {"OMP_NUM_THREADS": "4"},
+   "code": "detection_c02c_ml('{work}', 4)",
+   "timeout": 3600
+  },
+  {
+   "id": "py_t4",
+   "impl": "python",
+   "script": "benchmarks/detection/detection_c02c.py",
+   "args": ["{work}", "4"],
+   "env": {"OMP_NUM_THREADS": "4"},
+   "timeout": 3600
+  }
+ ],
+ "compare": [{"a": "py_t4", "b": "ml_t4"}],
+ "gate": {"ratio_max": 1.05, "overhead_max": 1.0, "metrics": ["op:detect_movie@*"]}
+}

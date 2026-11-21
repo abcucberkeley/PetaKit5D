@@ -103,11 +103,55 @@ rows past the channels kept in `s` only. An `'xyzAc'` fit of `XR_fitGaussians3D`
 ends `w` or more from its window's centre, the rounded start: 0 of 2,315 traced fits from the
 other channel's positions differ (the port measured from the unrounded start before, 282
 differed). Open: a given `WindowSize` (MATLAB finds 4,830 detections on a demo frame with
-`[2 2]`, the port's window 3,128; refused), and 'lowSNR' without the background correction (the
-wrapper's default): frame 1 has MATLAB's 1,006 detections against 1,005, frame 2 the same 969;
-given MATLAB's points the bad-point filter keeps MATLAB's 1,006 and 969, and all but one of the
-1,040 points into it agree within 1e-6 (one fit, moved 2.9 voxels, 2.9e-4 off: D3), which the
-filter passes on.
+`[2 2]`, the port's window 3,128; refused); 'lowSNR' without the background correction: D10.
+
+## The bad-point filter's second valley search, the frame-parallel runner (C02c)
+
+The bad-point filter (`detection.badpoints`) now runs MATLAB's second valley search (lines 221-267
+of `filter_bad_points_in_detection`; line numbers and keep masks only, no source read), measured
+with about 620 designed histograms (MATLAB's histogram and peak list mocked, every point given k
+neighbours so that the keep mask shows the removal thresholds), two synthetic inputs without
+mocks and C02's recorded calls. On the A paths: when the three bins from `max(bp - 1, 1)` hold
+more than 0.12 of all counts, or the first two of them more than 0.09, the first bin j after the
+background peak and before the next listed peak below `cbp / d` (d = 4, 3.5, 3, 2.5, 2 in turn)
+gives `T2`, its upper edge. Found at one of the first four levels, the path is B with `T2` when
+`T2 < 2 cam` (cam, the camera threshold, not 5; above 5 no bound was found up to 1.56 cam).
+Otherwise, for cam below 5 and the first bin's centre below 1.5 cam (the background peak was bin
+1 in the designs; of two recorded calls with it at bin 9 or 10, the one with cam 3 passed this
+test, the one with cam 6 did not): B with `T2` when bin j's count is below `cbp / 5`; else, with
+j found at one of the first three levels, the path A262 (lines 256-266): A's removal (2 or 3
+neighbours) below `min(noise, 1.5 cam)`, the noise rule below at most that, B's median bound
+(lines 351-357).
+Otherwise, cam 5 included, the first valley's decision stands; the first valley's B skips cam 5
+too (two designed histograms). The demo's 120 frames with the background correction stay bit for
+bit (channel 1 frame 28 takes the search: 16 points more removed), 249 of 285 replayed variants
+(one more, none lost), 942 of 1,011 designed decisions, 567 of the 580 designed keep masks with
+mocked neighbour counts, and the seven oracle cases (camera thresholds 3, 2.4, 2.1, 2 and 1.85;
+A262 with noise 2.6 and 3.2, on real neighbour counts). Open: the first valley's C for a
+background peak's bin centre at or above 2 cam (C02's rule, which the demo's channel-2 frames
+need): 14 designed histograms with camera thresholds 1 to 1.8 and 3 recorded variant calls took
+A, its exact form is open; 55 mismatches of C02's provisional designs (e8-e11), as before; the
+smoothing choice of line 104 and B's median bound on one frame (D10).
+
+| Row | What | Measured (largest) | Tolerance | Cause |
+|---|---|---|---|---|
+| D10 | 'lowSNR' without the background correction (`XR_runDetTrack3d`'s default detection): `run_detection_frame_parallel` against `XR_runDetection3D_frame_parallel` on the demo's 60 frames, both channels | 53 frames with MATLAB's number of detections, 41 of them with every position within 1e-6 (the others: one or two fits apart, D3); of MATLAB's 61,260 detections 61,218 matched, the port has 61,290; frames 1, 33 and 55: 1, 9 and 1 detections differ, from the fits (with MATLAB's own points the port's filter keeps MATLAB's set on 56 of the 60 frames, probe lt4); frames 17, 21, 50 and 51: 19, 3, 25 and 14 detections, from the filter's open rules (the smoothing choice of line 104 on 17, 50 and 51; B's median bound on 21: 103 candidates, median count 8, MATLAB takes it with U 9 or 10); matched values: the master's positions within 3.4e-10 relative, A 9.1e-5, the other channel's A 0.27 (a few refits) | none on the oracle cases (bit for bit); demo frames: listed | D3 (a restarted fit that moved 2.9 voxels and stopped 2.9e-4 away on frame 1, replayed from MATLAB's own window and start), which the filter's histogram and neighbour counts pass on; the filter's smoothing choice and B's bound (measured on the frames with the background correction) |
+| D11 | `run_detection_frame_parallel(..., overwrite=True)` when `Detection3D.mat` or per-frame files exist | MATLAB keeps them (its job framework counts existing outputs as done, so `Overwrite` true changes nothing: probes fp1-fp3) | none: the port removes them first and detects every frame again, as `XR_runDetection3D` and the lab's other wrappers do with `Overwrite` | MATLAB's bug (an option ignored), fixed in the port |
+| D12 | a frame without detections in `run_detection_frame_parallel` | MATLAB's entry repeats the session's previous frame's detections (with the frame's own `dRange`; probe fp3) | none: the port gives the empty entry, as `XR_runDetection3D` does | MATLAB's bug (a wrong result), fixed in the port |
+
+The frame-parallel runner (`detection.run.run_detection_frame_parallel`, measured on probes fp1 to
+fp4 of the synthetic condition): MATLAB runs its frames through its job framework, one task per
+frame whose output is `[ResultsPath 'Detections' filesep 'Detection_F_<k>.mat']` (k not padded;
+one variable `frameInfo_k`, the frame's entry; a marker `Detection_F_<k>.tmp` while it runs),
+with `Detection3D.mat` as the final output, then gathers the files into `Detection3D.mat`; the
+masks, the Amira folder and the skipping (`Overwrite` false and `Detection3D.mat`) as
+`XR_runDetection3D`'s; a frame whose file exists is taken as it is. The port runs the same tasks
+through `petakit5d.jobs` (local by default, as MATLAB's session; a process pool or Slurm with the
+framework's options). MATLAB's default `DetectionMethod` runs `XR_pointSourceDetection3D_1`,
+'original' `pointSourceDetection3D`, 'adaptive' `XR_pointSourceDetection3D_4`: not ported.
+Measured too: a foreign fresh marker made MATLAB's runner leave its frame and end after about 14
+s without `Detection3D.mat`; the port's framework waits for the marker's age (3 minutes) and
+then takes the frame over (the framework's rule).
 
 ## Tracking (`detection.tracking`, C03)
 

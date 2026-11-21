@@ -529,6 +529,44 @@ def b_sim_rotate(folder):
     rotate_3d_dataset(path, 0.108, 0.3, channel_patterns=("CamA",), **LOCAL)
 
 
+def b_detection_frames(folder):
+    """the frame-parallel detection of a two-channel movie of two DS frames (60 spots on
+    noise), 'lowSNR' without the background correction; the settings file gives the
+    threshold"""
+    import os
+
+    from petakit5d.detection import run
+    from petakit5d.testing import synth
+
+    ex = folder / "Ex1_synth_z0p5"
+    cols = []
+    shape = (24, 72, 68)
+    for c in (1, 2):
+        ds = ex / f"ch{c}" / "DS"
+        ds.mkdir(parents=True)
+        paths = []
+        for k in range(2):
+            rng = np.random.default_rng(10 * c + k)
+            centers = rng.uniform(0.0, 1.0, (60, 3)) * (np.array(shape) - 8.0) + 4.0
+            amps = rng.uniform(250.0, 600.0, 60)
+            im = synth.beads(shape, centers, (1.5, 1.3), amps, 100.0)
+            noise = rng.normal(0.0, 4.0, im.shape)
+            p = ds / f"synth_ch{c}_stack{k:04d}.tif"
+            write_tiff(np.clip(np.round(im + noise), 1, 65535).astype(np.uint16), str(p))
+            paths.append(str(p))
+        col = np.empty((len(paths), 1), dtype=object)
+        col[:, 0] = paths
+        cols.append(col)
+    with open(ex / "synth_Settings.txt", "w", newline="\n") as f:
+        f.write('Camera type = "Orca4.0"\n')
+    chans = [str(ex / f"ch{c}") + os.sep for c in (1, 2)]
+    movie = {"source": chans[0], "channels": chans, "framePathsDS": cols, "zAniso": 2.5}
+    run.run_detection_frame_parallel(
+        movie, [[1.3, 1.5], [1.3, 1.5]], [chans[0] + "Analysis" + os.sep],
+        detection_method="lowSNR",
+    )  # fmt: skip
+
+
 # name, builder, the captured framework call (1-based; 0: the frames the wrapper runs itself
 # in local mode; -1: the builder returns the records), the task functions it runs
 _C, _M, _R, _U = "tools.crop:", "tools.mip:", "tools.resample:", "tools.unmix:"
@@ -581,6 +619,7 @@ SCENARIOS: list[tuple[str, Callable[[Path], None], int, str]] = [
     ("sim_recon", b_sim_recon, 1, "sim.file:sim_recon_file"),
     ("sim_deskew", b_sim_deskew, 1, "sim.file:deskew_phases_file"),
     ("sim_rotate", b_sim_rotate, 1, "deskew_rotate.file:rotate_file"),
+    ("detection_frames", b_detection_frames, 1, "detection.run:frame_task"),
 ]
 
 

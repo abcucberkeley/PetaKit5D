@@ -12,6 +12,13 @@ with ``'BackgroundInfo' [bg, thr]`` (``thr`` the camera's residual threshold, 3 
 then, for each other channel, ``'Ac'`` fits at the master's positions and ``'xyzAc'`` fits from
 them (default options: windows ``ceil(2 sigma)``, ``kLevel = norminv(0.975)``), and per entry
 the choice between them (``other_channel``).
+
+``run_detection_frame_parallel``: ``XR_runDetection3D_frame_parallel`` (``XR_runDetTrack3d``'s
+default detection; task C02c, black box): the same frames as tasks of ``petakit5d.jobs``, one
+``Detections/Detection_F_<k>.mat`` (variable ``frameInfo_k``) per frame, gathered into
+``Detection3D.mat``; ``Overwrite`` and frames without detections as ``XR_runDetection3D`` has
+them (MATLAB's frame-parallel runner ignores the one and repeats the previous frame for the
+other: docs/parity/detection.md D11, D12).
 """
 
 from __future__ import annotations
@@ -26,9 +33,12 @@ __all__ = [
     "assemble_frame",
     "camera_threshold",
     "camera_type",
+    "detections_file",
     "dmask_name",
+    "frame_task",
     "frame_volume",
     "run_detection",
+    "run_detection_frame_parallel",
     "runner_sigma",
 ]
 
@@ -602,7 +612,7 @@ def _run_movie(
     num_threads,
 ) -> list[dict]:
     """one movie of ``run_detection``"""
-    from petakit5d.io import matfile, read_tiff, write_tiff
+    from petakit5d.io import read_tiff, write_tiff
 
     chans = [os.path.normpath(c) for c in _strings(data["channels"])]
     src = os.path.normpath(str(data["source"]))
@@ -634,7 +644,260 @@ def _run_movie(
         )
         write_tiff(dm, os.path.join(masks, dmask_name(k, nframes)))
         entries.append(entry)
-    rows = [{f: (e[f] if f != "dRange" else list(e[f])) for f in FIELD_ORDER} for e in entries]
+    _write_detection3d(results_path + "Detection3D.mat", entries)
+    return entries
+
+
+def _entry_row(e: dict) -> dict:
+    """a frameInfo entry as write_mat takes it (MATLAB's field order, dRange a cell row)"""
+    return {f: (e[f] if f != "dRange" else list(e[f])) for f in FIELD_ORDER}
+
+
+def _write_detection3d(path: str, entries: list[dict]) -> None:
+    from petakit5d.io import matfile
+
+    rows = [_entry_row(e) for e in entries]
     fi = matfile.StructArray((1, len(rows)), FIELD_ORDER, rows)
-    matfile.write_mat(results_path + "Detection3D.mat", {"frameInfo": fi}, version="7.3")
+    matfile.write_mat(path, {"frameInfo": fi}, version="7.3")
+
+
+# -- XR_runDetection3D_frame_parallel ------------------------------------------------------------
+
+
+def detections_file(results_path: str, k: int) -> str:
+    """the frame-parallel runner's per-frame file ``[ResultsPath 'Detections' filesep
+    'Detection_F_<k>.mat']`` (k 1-based, not padded; a results folder without the trailing
+    separator gives ``...AnalysisDetections``, as MATLAB's)"""
+    return f"{results_path}Detections{os.sep}Detection_F_{int(k)}.mat"
+
+
+def frame_task(
+    frame_paths: list[str],
+    k: int,
+    nframes: int,
+    sigma,
+    z_aniso: float,
+    master: int,
+    threshold: float,
+    results_path: str,
+    *,
+    detection_method: str = "lowSNR",
+    background_correction: bool = False,
+    window_size=None,
+    num_threads: int | None = None,
+) -> None:
+    """One frame of ``run_detection_frame_parallel`` (a task of the job framework): frame ``k``
+    (1-based) of every channel (``frame_paths``, the DS frames in channel order) detected as
+    ``run_detection`` does it (``detect_frame``), its dmask written to
+    ``<results_path>/Masks/dmask_<k>.tif``, then its entry published as
+    ``detections_file(results_path, k)`` (MAT v7.3, the variable ``frameInfo_k``), last and by
+    one rename, since the file's existence marks the task done."""
+    from petakit5d.io import matfile, read_tiff, write_tiff
+    from petakit5d.jobs.publish import publish_result, temp_path
+
+    vols = [read_tiff(p) for p in frame_paths]
+    entry, dm = detect_frame(
+        vols,
+        int(k),
+        np.asarray(sigma, dtype=np.float64),
+        float(z_aniso),
+        int(master),
+        float(threshold),
+        num_threads,
+        detection_method=detection_method,
+        background_correction=bool(background_correction),
+        window=window_size,
+    )
+    write_tiff(dm, os.path.join(results_path + os.sep + "Masks", dmask_name(int(k), int(nframes))))
+    out = detections_file(results_path, int(k))
+    tmp = temp_path(out)
+    matfile.write_mat(tmp, {"frameInfo_k": _entry_row(entry)}, version="7.3")
+    publish_result(tmp, out)
+
+
+def _read_frame_entry(path: str) -> dict:
+    from petakit5d.io import matfile
+
+    e = matfile.read_mat(path, "frameInfo_k")["frameInfo_k"]
+    return {f: (list(e[f]) if f == "dRange" else e[f]) for f in FIELD_ORDER}
+
+
+def run_detection_frame_parallel(
+    data,
+    sigma=None,
+    results_path=None,
+    *,
+    overwrite: bool = False,
+    window_size=None,
+    mode: str = "xyzAc",
+    fit_mixtures: bool = False,
+    max_mixtures: int = 3,
+    detection_method: str | None = None,
+    background_correction: bool = False,
+    write_amira: bool = True,
+    frames=None,
+    residual_sigma_threshold: float | None = None,
+    num_threads: int | None = None,
+    parse_cluster: bool = False,
+    local_worker_num: int = 1,
+    job_log_dir: str = "",
+    cpus_per_task: int = 1,
+    mem_allocate: float | None = None,
+    config_file: str = "",
+) -> list[list[dict] | None]:
+    """``XR_runDetection3D_frame_parallel(data, 'Sigma', sigma, 'Overwrite', ow, 'WindowSize',
+    ws, 'ResultsPath', rp, 'Mode', mode, 'FitMixtures', fm, 'MaxMixtures', mm,
+    'DetectionMethod', method, 'BackgroundCorrection', bc)``, ``XR_runDetTrack3d``'s detection
+    stage: the frames of every movie as tasks of the job framework (``petakit5d.jobs``), then
+    their entries gathered into ``Detection3D.mat``. Measured as a black box (probes of MATLAB
+    R2024b); the same detections and files as ``run_detection`` with the same options.
+
+    Per movie (results folder as ``run_detection``'s): with ``overwrite`` false a movie whose
+    ``Detection3D.mat`` exists is skipped (None in the result). Each frame ``k`` is a task
+    (``frame_task``) whose output is ``<results_path>Detections/Detection_F_<k>.mat`` (one
+    variable ``frameInfo_k``, the frame's ``frameInfo`` entry); a frame whose file exists is not
+    run again, and a task another caller holds (its ``Detection_F_<k>.tmp`` marker, fresh) is
+    left to it, as MATLAB's job framework does, so several callers share a movie's frames.
+    When every frame's file exists, ``Detection3D.mat`` is written from them (else the movie
+    gives None); ``Detection3D.mat`` existing counts as all frames done.
+
+    Two differences from MATLAB (its quirks that are bugs; docs/parity/detection.md D11, D12):
+    ``overwrite`` true removes the movie's ``Detection3D.mat`` and per-frame files first, so
+    the frames are detected again (MATLAB keeps them and so ignores the flag); and a frame
+    without detections gets the empty entry, as ``run_detection`` gives it (MATLAB's
+    frame-parallel runner repeats the previous frame's detections there).
+
+    ``detection_method`` 'lowSNR' (what ``XR_runDetTrack3d`` passes) or 'speedup'; MATLAB's
+    default (None here) runs ``XR_pointSourceDetection3D_1``, which is not ported. The other
+    options as ``run_detection``'s. The job framework's: ``parse_cluster`` (MATLAB's runner
+    computes in its session: False), ``local_worker_num`` (a pool of that many processes),
+    ``job_log_dir``, ``cpus_per_task``, ``mem_allocate``, ``config_file`` (``run_tasks``'s).
+    In one process the detector's t threshold is computed once (MATLAB's per-session quirk);
+    a pool's or cluster's processes each compute their own, as MATLAB's workers do. Returns per
+    movie its ``frameInfo`` entries."""
+    if detection_method is None:
+        raise NotImplementedError(
+            "run_detection_frame_parallel: MATLAB's default DetectionMethod runs "
+            "XR_pointSourceDetection3D_1, which is not ported; give 'lowSNR' or 'speedup'"
+        )
+    if sigma is None or np.size(sigma) == 0:
+        raise ValueError(
+            "run_detection_frame_parallel: give sigma (MATLAB asks for it interactively)"
+        )
+    if mode != "xyzAc":
+        raise NotImplementedError(f"run_detection_frame_parallel: Mode {mode!r}: 'xyzAc' is ported")
+    if bool(np.asarray(fit_mixtures).reshape(-1)[0]):
+        raise NotImplementedError("run_detection_frame_parallel: FitMixtures true is not ported")
+    if detection_method not in ("speedup", "lowSNR"):
+        raise NotImplementedError(
+            f"run_detection_frame_parallel: DetectionMethod {detection_method!r}: 'speedup' and "
+            "'lowSNR' are ported"
+        )
+    if window_size is not None and np.size(window_size) != 0:
+        raise NotImplementedError(
+            "run_detection_frame_parallel: WindowSize: the default (empty) is ported"
+        )
+    del max_mixtures  # (only with mixtures)
+    movies = _movies(data)
+    paths = _results_paths(results_path, movies)
+    jobs = {
+        "parse_cluster": bool(parse_cluster),
+        "local_worker_num": int(local_worker_num),
+        "cpus_per_task": cpus_per_task,
+        "mem_allocate": mem_allocate,
+        "config_file": config_file,
+    }
+    if job_log_dir:
+        jobs["job_log_dir"] = job_log_dir
+    out: list[list[dict] | None] = []
+    for mv, rp in zip(movies, paths, strict=True):
+        final = rp + "Detection3D.mat"
+        if os.path.isfile(final) and not overwrite:
+            out.append(None)
+            continue
+        out.append(
+            _run_movie_frame_parallel(
+                mv,
+                sigma,
+                rp,
+                overwrite=bool(overwrite),
+                window_size=window_size,
+                detection_method=detection_method,
+                background_correction=bool(background_correction),
+                write_amira=write_amira,
+                frames=frames,
+                residual_sigma_threshold=residual_sigma_threshold,
+                num_threads=num_threads,
+                jobs=jobs,
+            )
+        )
+    return out
+
+
+def _run_movie_frame_parallel(
+    data: dict,
+    sigma,
+    results_path: str,
+    *,
+    overwrite: bool,
+    window_size,
+    detection_method: str,
+    background_correction: bool,
+    write_amira: bool,
+    frames,
+    residual_sigma_threshold,
+    num_threads,
+    jobs: dict,
+) -> list[dict] | None:
+    """one movie of ``run_detection_frame_parallel``"""
+    from petakit5d.jobs import framework
+    from petakit5d.jobs.tasks import Task
+
+    chans = [os.path.normpath(c) for c in _strings(data["channels"])]
+    src = os.path.normpath(str(data["source"]))
+    master = chans.index(src) if src in chans else 0
+    fpaths = _frame_paths(data["framePathsDS"])
+    nframes = len(fpaths[master])
+    sel = list(range(1, nframes + 1)) if frames is None else [int(f) for f in frames]
+    thr = residual_sigma_threshold
+    if thr is None:
+        thr = camera_threshold(data["source"])
+    final = results_path + "Detection3D.mat"
+    outputs = [detections_file(results_path, k) for k in sel]
+    if overwrite:
+        for p in [final, *outputs]:
+            if os.path.isfile(p):
+                os.remove(p)
+    os.makedirs(results_path + os.sep + "Masks", exist_ok=True)
+    os.makedirs(os.path.dirname(outputs[0]) if outputs else results_path, exist_ok=True)
+    s = np.array(sigma, dtype=np.float64, ndmin=2).tolist()
+    z_aniso = float(np.asarray(data["zAniso"]).reshape(-1)[0])
+    tasks = [
+        Task.of(
+            frame_task,
+            [fpaths[ch][k - 1] for ch in range(len(fpaths))],
+            k,
+            nframes,
+            s,
+            z_aniso,
+            master,
+            float(thr),
+            results_path,
+            detection_method=detection_method,
+            background_correction=background_correction,
+            window_size=None,
+            num_threads=num_threads,
+        )
+        for k in sel
+    ]
+    framework.run_tasks(
+        [fpaths[master][k - 1] for k in sel], outputs, tasks, final_out_fullpath=final, **jobs
+    )
+    if write_amira:
+        os.makedirs(os.path.join(results_path, "Amira", "Detection"), exist_ok=True)
+    if not all(os.path.isfile(p) for p in outputs):
+        return None
+    entries = [_read_frame_entry(p) for p in outputs]
+    if not os.path.isfile(final):
+        _write_detection3d(final, entries)
     return entries
