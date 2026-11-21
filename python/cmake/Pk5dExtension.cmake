@@ -83,9 +83,9 @@ endif()
 
 # MinGW-w64: the C math functions the modules call, made independent of the calling thread's x87
 # precision and right (cpp/common/mingw_libm.c): a wrapper per function in pk5d_mingw_libm (a module
-# carries the ones it calls), the modules linked with --wrap=<function>. The functions left to
-# MinGW-w64 are exact at any precision (floor, ceil, trunc, nearbyint, rint, ldexp, frexp, modf, fmod,
-# fabs, copysign, sqrt: GCC computes it with the instruction).
+# carries the ones it calls), the modules linked with --wrap=<function>; nearbyint and ldexp, exact, in
+# SSE2 for speed. The functions left to MinGW-w64 are exact at any precision (floor, ceil, trunc, rint,
+# frexp, modf, fmod, fabs, copysign, sqrt: GCC computes it with the instruction).
 if(PK5D_MINGW)
   set(PK5D_MINGW_LIBM
       D_D:exp D_D:exp2 D_D:expm1 D_D:log D_D:log2 D_D:log10 D_D:log1p
@@ -97,7 +97,8 @@ if(PK5D_MINGW)
       F_F:asinhf F_F:acoshf F_F:atanhf F_F:erff F_F:erfcf F_F:cbrtf F_F:tgammaf F_F:lgammaf
       F_FF:powf F_FF:atan2f F_FF:hypotf
       SINCOS:sincos SINCOSF:sincosf UCRT_FMA:fma UCRT_FMAF:fmaf
-      ROUND:round LROUND:lround LLROUND:llround ROUNDF:roundf LROUNDF:lroundf LLROUNDF:llroundf)
+      ROUND:round LROUND:lround LLROUND:llround ROUNDF:roundf LROUNDF:lroundf LLROUNDF:llroundf
+      NEARBYINT:nearbyint LDEXP:ldexp)
   set(_pk5d_libm_src "${CMAKE_CURRENT_LIST_DIR}/../cpp/common/mingw_libm.c")
   get_filename_component(_pk5d_libm_src "${_pk5d_libm_src}" ABSOLUTE)
   set(_pk5d_libm_sources "")

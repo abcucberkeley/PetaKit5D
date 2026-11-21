@@ -37,8 +37,8 @@ generator (`CMAKE_GENERATOR=Ninja`), for `pip install`, cibuildwheel and CMake b
   name (`petakit5d/_ext/`, also in the wheels: delvewheel leaves them). The cpp-zarr and cpp-tiff
   libraries load `libgomp-1.dll` of the same toolchain by that name, and Windows loads a DLL of a
   name once per process, so the three share one runtime whichever is imported first
-  (`tests/test_openmp_runtime.py`). The three files are byte for byte those of the cpp-tiff 1.8.0
-  wheels (cpp-zarr's `libgomp-1.dll` differs only in the import delvewheel renamed in it).
+  (`tests/test_openmp_runtime.py`). The three files are byte for byte those of the cpp-tiff wheels
+  (1.7.3 and 1.8.0; cpp-zarr's `libgomp-1.dll` differs only in the import delvewheel renamed in it).
 - **The exact add-on** (FFTW) builds with it too: DLLs named as MSVC names them, FFTW's API
   exported alone, FFTW's own aligned allocator (`WITH_OUR_MALLOC`, FFTW's advice for MinGW), libgcc
   linked in; the DLLs load only the system's.
@@ -62,6 +62,11 @@ nothing elsewhere, and the Linux, macOS and MSVC builds compile the code they co
   instruction. The filters' fused taps use it where the CPU has no FMA.
 - **MinGW-w64 10's `round`** gives 1 for 0.49999999999999994 (the libraries met it, cpp-zarr
   22049b9): the wrappers round halves away from zero exactly.
+- **`nearbyint` and `ldexp`** are exact at any precision, but MinGW-w64's run the x87 unit
+  (`nearbyint` sets and restores its control word around `frndint`): 27 and 5.8 ns a call on
+  Windows 10, against 1.4 for their SSE2 forms, which the wrappers use (the same bits as
+  MinGW-w64's for a million arguments, subnormal results among them). The detection fits'
+  correctly rounded exp calls them four times a value. (The UCRT's take 17 and 19 ns.)
 - **thread_local objects with destructors** are destroyed after emulated TLS has freed them when a
   thread ends (OpenMP's threads end as their teams change): winpthreads runs emutls' key destructor
   before the module's TLS callback runs theirs. pocketfft's backend kept a line buffer per thread
@@ -75,19 +80,51 @@ nothing elsewhere, and the Linux, macOS and MSVC builds compile the code they co
 
 ## The same bits
 
-[platforms](../platforms.md), "Measured: the kernels' bits on each system". With MinGW-w64 on
-Windows 10 (Xeon Gold 6442Y, AVX-512), Python 3.12: every pinned case of
-`tests/platform/test_kernel_hashes.py` has Linux's digest, and the cases recorded, not pinned, gave
-Linux's digests for the FFTs; the platform and smoke tests: 194 passed, 47 skipped (the skips of
-Linux x86-64's builds). On GitHub's windows-2025 runners: see "What CI showed".
+[platforms](../platforms.md), "Measured: the kernels' bits on each system". On Windows 10 (Xeon
+Gold 6442Y, AVX-512), with the two wheels of one commit built by the wheel workflow, Python 3.12:
+
+- **MinGW-w64:** all 65 pinned cases of `tests/platform/test_kernel_hashes.py` give Linux's
+  digests (the platform, smoke and OpenMP-runtime tests: 196 passed, 47 skipped, the skips of
+  Linux x86-64's builds; the same with the cp311 wheel on Python 3.11). Of the 9 cases recorded, not pinned, 6
+  give Linux's bits too: the FFTs (pocketfft's and the half spectra), the normalized
+  cross-correlation, the FFT-based deconvolution and the least squares. The other 3 differ where
+  the C library or NumPy computes: the Anderson-Darling statistics (`erf`, `erfc`, `log`: 3 and
+  3 values) and edgetaper (NumPy's `np.fft` and complex `np.abs`).
+- **MSVC:** 64 of the 65 (`detection.cr_exp` fails: Windows 10's `ldexp`, [platforms](../platforms.md),
+  "What differs by system"), 187 passed, 55 skipped, 1 failed; 2 of the 9 recorded cases give
+  Linux's bits.
+
+On GitHub's windows-2025 runners: see "What CI showed".
 
 ## Speed
 
-To be filled in from the interleaved runs of the two wheels on one Windows 10 machine (8 vCPUs).
+The two wheels of one commit, built by the wheel workflow, on one Windows 10 machine (8 vCPUs of a
+Xeon Gold 6442Y), through `petakit5d.testing.bench`: one process per round, the two wheels'
+processes in alternating order, a warm-up round and 5 rounds; each operation timed 3 to 5 times
+per round at 1 thread and at 8. The table gives the median seconds and MinGW-w64's time over
+MSVC's (the median of the rounds' paired ratios; "~" where the two wheels' round medians
+overlap).
+
+SPEED_TABLE_TBD
+
+- **Faster with MinGW-w64:** the kernels where GCC's vector extensions and the run-time
+  instruction-set dispatch apply, which MSVC builds without: the Gaussian filters' fused taps (the
+  FMA instruction; MSVC calls the C library's `fma` per tap), pocketfft's vector lines (MSVC: one
+  line at a time), the deconvolutions (FFTs and the element-wise vector loops), the deskew.
+- **Slower with MinGW-w64:** the 3 x 3 x 3 median filter's network and binary erosion, whose
+  GCC code is Linux's: GCC compiles the network's 16-lane vectors into scalar code, while MSVC
+  vectorizes the lane-by-lane loops it gets; a change to those kernels would speed up Linux too
+  (outside this record). DETECTION_TBD
 
 ## What CI showed
 
-To be filled in from the wheels-trial runs.
+The trial of 2026-11-21 (the wheel and Python workflows on GitHub's runners, both toolchains):
+
+- **Wheels:** every job passed. On windows-2025, MinGW-w64 built, repaired, audited, tested and
+  checked the abi3 and cp311 wheels in 6.5 minutes (MSVC: 7.9) and the add-on in 3.7 (MSVC: 7.5).
+  The MinGW-w64 wheels carry `libgomp-1.dll`, `libwinpthread-1.dll` and `libgcc_s_seh-1.dll` with
+  the SHA-256 of the cpp-tiff wheels' copies; check_wheel found nothing in any wheel.
+- **Python** (the source build and the full test suite): CI_TBD
 
 ## Consequences
 
@@ -103,5 +140,5 @@ To be filled in from the wheels-trial runs.
   first loaded serves all, and libgomp is backward compatible (the modules call the entry points of
   GCC 4.9 and later).
 - New C math functions in the kernels: `cmake/Pk5dExtension.cmake`'s `PK5D_MINGW_LIBM` lists the
-  wrapped ones; a function outside it, other than the exact ones (floor, ceil, trunc, nearbyint,
-  rint, ldexp, frexp, modf, fmod, fabs, copysign, sqrt), needs adding there.
+  wrapped ones; a function outside it, other than the exact ones (floor, ceil, trunc, rint, frexp,
+  modf, fmod, fabs, copysign, sqrt), needs adding there.

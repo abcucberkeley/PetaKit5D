@@ -191,7 +191,7 @@ linked statically, functions of its C library (libmingwex: among them the math f
 licenses: the mingw-w64 project's BSD-style license for the runtime, with the notices of its parts
 under other permissive licenses, which binary distributions must include; MIT for winpthreads,
 with the BSD notice of the parts it derives from. The wheels carry the notices as the toolchain
-ships them, copied from it by the build, as the cpp-zarr and cpp-tiff wheels carry the same files:
+ships them, copied from it by the build (the texts cpp-zarr's repository ships for its wheels):
 `petakit5d/_ext/licenses/mingw-w64/COPYING.MinGW-w64-runtime.txt` and
 `petakit5d/_ext/licenses/winpthreads/COPYING`. Built with MinGW-builds' GCC 12.2.0 (the toolchain
 of `tools/get_mingw.sh`), the build checks the four files' SHA-256 against that toolchain's

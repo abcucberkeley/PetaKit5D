@@ -56,8 +56,6 @@ void use_pool(size_t nt) {
     }
     pool_running = true;
 }
-#else
-inline void use_pool(size_t) {}
 #endif
 
 using shape_t = pk5d_pocketfft_mt::shape_t;
@@ -92,8 +90,10 @@ shape_t all_axes(size_t nd) {
 
 template <typename T>
 void forward_t(const T* x, const std::vector<std::int64_t>& shape, T* h, int threads) {
+#if defined(__MINGW32__)
     use_pool(static_cast<size_t>(threads > 0 ? threads : 1));
     pk5d::x87_extended x87;  // pocketfft's plans (pk5d/x87.hpp), made on this thread
+#endif
     const shape_t s = to_shape(shape);
     shape_t sh = s;
     sh.back() = s.back() / 2 + 1;
@@ -106,8 +106,10 @@ void forward_t(const T* x, const std::vector<std::int64_t>& shape, T* h, int thr
 // last, the factor applied there; here the first part runs in place on h, without pocketfft's temporary copy
 template <typename T>
 void inverse_t(T* h, const std::vector<std::int64_t>& shape, T* y, int threads) {
+#if defined(__MINGW32__)
     use_pool(static_cast<size_t>(threads > 0 ? threads : 1));
     pk5d::x87_extended x87;
+#endif
     const shape_t s = to_shape(shape);
     shape_t sh = s;
     sh.back() = s.back() / 2 + 1;

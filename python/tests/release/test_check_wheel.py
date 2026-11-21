@@ -687,6 +687,14 @@ def test_an_msvc_wheel_needs_no_mingw_notices(tmp_path, capsys):
             id="renamed",
         ),
         pytest.param(
+            mingw(
+                rename("petakit5d/_ext/libgomp-1.dll", f"petakit5d.libs/libgomp-1-{HASH}.dll"),
+                put(WIN, mingw_module(omp=f"libgomp-1-{HASH}.dll")),
+            ),
+            r"0 libraries match petakit5d/_ext/libgomp-1\\\.dll \(expected one\)",
+            id="renamed-not-shared",
+        ),
+        pytest.param(
             mingw(drop("petakit5d/_ext/libgcc_s_seh-1.dll")),
             r"libgomp-1\.dll: loads libgcc_s_seh-1\.dll, which is neither in the wheel",
             id="libgcc-missing",

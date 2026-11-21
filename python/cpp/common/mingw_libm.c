@@ -13,7 +13,11 @@
    - fma, fmaf: MinGW-w64's are not fused (they differed from the instruction in 11% and 22% of random
      near-cancelling inputs): the UCRT's, which are.
    - round, lround, llround and their float forms: MinGW-w64 10's round gives 1 for 0.49999999999999994 (the
-     largest double below one half): halves are rounded away from zero exactly. */
+     largest double below one half): halves are rounded away from zero exactly.
+   - nearbyint, ldexp: exact at any precision, but MinGW-w64's run the x87 unit (nearbyint with its control
+     word saved and set around frndint: 27 ns a call, against 1.4 here; ldexp 5.8 against 1.4), and the
+     detection fits' correctly rounded exp calls them four times a value: the same results in SSE2. */
+#include <errno.h>
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -148,6 +152,31 @@ long PK5D_WRAP(float x) { return (long)pk5d_roundf(x); }
 #else
 long long PK5D_WRAP(float x) { return (long long)pk5d_roundf(x); }
 #endif
+#elif defined(PK5D_LIBM_NEARBYINT)
+/* in the current rounding mode: from 2^52 on every double is an integer, and below it the sum with 2^52 (of
+   x's sign) rounds x to one; NaN quieted, as the x87 unit's frndint returns it */
+double PK5D_WRAP(double x) {
+    const double big = 4503599627370496.0; /* 2^52 */
+    if (x != x) return x + x;
+    if (!(fabs(x) < big)) return x;
+    const double r = x >= 0 ? (x + big) - big : (x - big) + big;
+    return copysign(r, x); /* -0 for -0.5 <= x <= -0 */
+}
+#elif defined(PK5D_LIBM_LDEXP)
+/* x 2^k by one multiplication when 2^k is a normal double (one rounding, as the x87 unit's fscale and store
+   give it), MinGW-w64's own otherwise; NaN, infinities and zeros as they are, and errno ERANGE where the
+   result overflows or underflows to zero, as MinGW-w64's */
+double PK5D_REAL(double, int);
+double PK5D_WRAP(double x, int k) {
+    if (!isfinite(x) || x == 0.0) return x;
+    if (k < -1022 || k > 1023) return PK5D_REAL(x, k);
+    const uint64_t u = (uint64_t)(k + 1023) << 52;
+    double p;
+    memcpy(&p, &u, sizeof p);
+    const double r = x * p;
+    if (r == 0.0 || !isfinite(r)) errno = ERANGE;
+    return r;
+}
 #else
 #error "mingw_libm.c: define PK5D_LIBM_<kind> and PK5D_LIBM_NAME (cmake/Pk5dExtension.cmake)"
 #endif

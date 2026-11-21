@@ -84,8 +84,10 @@ Plan<T>* make_plan(int kind, int rank, const Iodim* dims, int hrank, const Iodim
         p->odist = hdims[0].os;
     }
     try {
+#if defined(__MINGW32__)
         // pocketfft's twiddle factors start from an angle computed in long double (pk5d/x87.hpp)
         pk5d::x87_extended x87;
+#endif
         if (kind == kC2C) {
             p->c.reset(new pocketfft_c<T>(p->n));
         } else {
