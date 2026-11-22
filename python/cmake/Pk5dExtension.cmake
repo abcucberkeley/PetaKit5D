@@ -16,11 +16,33 @@ set(PK5D_X86_64 FALSE)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x64|X64)$")
   set(PK5D_X86_64 TRUE)
 endif()
-# MinGW-w64's GCC on Windows (CC=gcc CXX=g++, the Ninja generator): the compiler of the lab's
-# cpp-zarr and cpp-tiff, an alternative to MSVC
+# MinGW-w64's GCC on Windows (with the Ninja generator): the toolchain of the release wheels and
+# of the cpp-zarr and cpp-tiff wheels, and of source builds where it is found; MSVC otherwise
+# (cmake/Pk5dToolchain.cmake chose before project(), and says why here)
 set(PK5D_MINGW FALSE)
 if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(PK5D_MINGW TRUE)
+endif()
+if(WIN32)
+  if(NOT DEFINED CACHE{PK5D_TOOLCHAIN_WHY})
+    set(PK5D_TOOLCHAIN_WHY "as CMake's command line names it")
+  endif()
+  message(STATUS "petakit5d: the Windows toolchain: ${CMAKE_CXX_COMPILER_ID} "
+                 "${CMAKE_CXX_COMPILER_VERSION} (${CMAKE_CXX_COMPILER}): ${PK5D_TOOLCHAIN_WHY}")
+endif()
+# another MinGW-w64 GCC builds too, but not silently: the modules then carry its libgomp-1.dll,
+# not the one of the cpp-zarr and cpp-tiff wheels, and a process loads one DLL of that name, the
+# first one asked for, for both
+set(_pk5d_pinned FALSE)
+if(PK5D_MINGW)
+  pk5d_mingw_toolchain_check("${CMAKE_CXX_COMPILER}" _pk5d_pinned _pk5d_toolchain)
+  if(NOT _pk5d_pinned)
+    message(WARNING "MinGW-w64: ${_pk5d_toolchain}, not MinGW-builds' GCC 12.2.0 with the UCRT "
+                    "(tools/get_mingw.sh), the toolchain of the cpp-zarr and cpp-tiff wheels: "
+                    "the modules carry its libgomp-1.dll, and a process loads one libgomp-1.dll, "
+                    "the first one asked for, for the modules and those libraries alike "
+                    "(docs/platforms.md)")
+  endif()
 endif()
 
 # flags of every kernel
@@ -122,8 +144,9 @@ endif()
 # runtime: libgomp-1.dll, libgcc_s_seh-1.dll, libstdc++ and libgcc linked in; MinGW-w64's runtime,
 # linked in; winpthreads: libwinpthread-1.dll), copied as the toolchain ships them, from its
 # licenses/ folder (the MinGW-builds layout) next to the modules (petakit5d/_ext/licenses/), as its
-# DLLs are. Built with MinGW-builds' GCC 12.2.0, the toolchain of tools/get_mingw.sh, their SHA-256
-# must be that toolchain's; another toolchain's are copied as they are, their SHA-256 shown.
+# DLLs are. Built with MinGW-builds' GCC 12.2.0 with the UCRT, the toolchain of tools/get_mingw.sh
+# (_pk5d_pinned, above), their SHA-256 must be that toolchain's; another toolchain's are copied as
+# they are, their SHA-256 shown.
 #   PK5D_MINGW_NOTICES  "<file>|<path under licenses/>" of each, for pk5d_finalize
 set(PK5D_MINGW_NOTICES "")
 if(PK5D_MINGW)
@@ -136,11 +159,6 @@ if(PK5D_MINGW)
       "gcc/COPYING.RUNTIME=9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
       "mingw-w64/COPYING.MinGW-w64-runtime.txt=36a4857b6557a97baa82762444ffd6a74c7575015595dc26ff02215c299f81f6"
       "winpthreads/COPYING=63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177")
-  execute_process(COMMAND "${CMAKE_CXX_COMPILER}" --version OUTPUT_VARIABLE _pk5d_banner ERROR_QUIET)
-  set(_pk5d_pinned FALSE)
-  if(_pk5d_banner MATCHES "x86_64-posix-seh-rev2, Built by MinGW-W64 project\\) 12\\.2\\.0")
-    set(_pk5d_pinned TRUE)
-  endif()
   foreach(_e IN LISTS _pk5d_notices)
     string(REPLACE "=" ";" _kv "${_e}")
     list(GET _kv 0 _rel)

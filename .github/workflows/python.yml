@@ -44,8 +44,11 @@ jobs:
         # environment (Linux), and the newest supported one with the newest packages
         os: [ubuntu-24.04, macos-15, windows-2025]
         python: ['3.12', '3.14']
-        # Windows: the source build with MSVC (pip's default there) and with MinGW-w64's GCC
-        # (docs/decisions/0011-windows-toolchain.md)
+        # Windows: the source build's own choice of toolchain (python/docs/platforms.md, "Windows:
+        # the toolchain of a source build"): MinGW-w64 where MinGW-builds' GCC 12.2.0 is (mingw: in
+        # tools/get_mingw.sh's folder with no MinGW-w64 on PATH for 3.12, first on PATH for 3.14),
+        # and else MSVC, at the second attempt, after the first one left out the runners' own
+        # MinGW-w64 (GCC 15, on PATH)
         toolchain: ['']
         include:
           - {os: windows-2025, python: '3.12', toolchain: mingw}
@@ -62,11 +65,19 @@ jobs:
       - if: runner.os == 'macOS'
         run: brew install libomp
 
-      # MinGW-builds' GCC 12.2.0 (UCRT), pinned by SHA-256, first on PATH, with CC, CXX and
-      # CMAKE_GENERATOR=Ninja for pip's build
+      # MinGW-builds' GCC 12.2.0 (UCRT), pinned by SHA-256: for Python 3.12 in tools/get_mingw.sh's
+      # own folder, off PATH, for 3.14 first on PATH; the build finds it in both
       - name: MinGW-w64's GCC (Windows, MinGW)
         if: matrix.toolchain == 'mingw'
-        run: bash tools/get_mingw.sh "$RUNNER_TEMP/mingw"
+        env:
+          ON_PATH: ${{ matrix.python == '3.14' }}
+        run: |
+          if [ "$ON_PATH" = true ]; then
+            bash tools/get_mingw.sh "$RUNNER_TEMP/mingw" | tee "$RUNNER_TEMP/mingw.txt"
+            tail -n 1 "$RUNNER_TEMP/mingw.txt" >> "$GITHUB_PATH"
+          else
+            bash tools/get_mingw.sh
+          fi
 
       - name: Install (pinned environment)
         if: runner.os == 'Linux' && matrix.python == '3.12'
@@ -77,11 +88,57 @@ jobs:
 
       # with the figures (matplotlib) and n5 (numcodecs) extras, so that their tests and oracle
       # cases run (both have wheels for every runner); the pinned environment stays without them
+      # (mingw 3.12: with no gcc on PATH at all, every folder that has one left out of it (the
+      # runners' MinGW-w64, Strawberry Perl's), as on a machine with only tools/get_mingw.sh's
+      # toolchain)
       - name: Install
         if: ${{ !(runner.os == 'Linux' && matrix.python == '3.12') }}
+        env:
+          NO_MINGW_ON_PATH: ${{ matrix.toolchain == 'mingw' && matrix.python == '3.12' }}
         run: |
+          if [ "$NO_MINGW_ON_PATH" = true ]; then
+            for _ in 1 2 3 4 5 6 7 8; do
+              g=$(command -v gcc) || break
+              d=$(dirname "$g")
+              echo "PATH without $d"
+              PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i -x -F "$d" | paste -s -d ':' -)
+              hash -r
+            done
+            if command -v gcc; then echo "::error::a gcc is still on PATH"; exit 1; fi
+          fi
           python -m pip install --upgrade pip
-          python -m pip install -v ".[test,figures,n5]"
+          python -m pip install -v ".[test,figures,n5]" 2>&1 | tee "$RUNNER_TEMP/pip-install.log"
+
+      # the toolchain the build took, and why (python/cmake/Pk5dToolchain.cmake): MinGW-builds' GCC
+      # 12.2.0 where it is (where the job put it), else MSVC at the second attempt
+      - name: Toolchain (Windows)
+        if: runner.os == 'Windows'
+        env:
+          TOOLCHAIN: ${{ matrix.toolchain }}
+          ON_PATH: ${{ matrix.python == '3.14' }}
+        run: |
+          grep -E 'petakit5d: (the Windows toolchain|no MinGW-builds)|retrying due to override' "$RUNNER_TEMP/pip-install.log" || true
+          python - <<'EOF'
+          import os
+          from petakit5d._ext import load
+
+          compiler = load("core").build_info()["compiler"]
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "pip-install.log"), encoding="utf-8", errors="replace") as f:
+              log = f.read()
+          took = [ln.strip() for ln in log.splitlines() if "petakit5d: the Windows toolchain:" in ln]
+          print(compiler, took)
+          assert len(took) == 1, took
+          if os.environ["TOOLCHAIN"] == "mingw":
+              where = "on PATH" if os.environ["ON_PATH"] == "true" else "in tools/get_mingw.sh's folder"
+              assert compiler == "gcc 12.2.0", compiler
+              assert took[0].endswith(f"the UCRT {where}: the default of source builds"), took
+              # (the build's own check after project(): this is the pinned toolchain, no warning)
+              assert "CMake Warning at cmake/Pk5dExtension.cmake" not in log, "a toolchain warning"
+          else:
+              assert compiler.startswith("msvc "), compiler
+              assert took[0].endswith("the fallback: the attempt with MinGW-w64 failed (its log is above)"), took
+              assert "gcc on PATH: " in log, "the first attempt names no gcc on PATH"
+          EOF
 
       # the OpenMP runtime the build put next to the modules, and the toolset's copies
       - name: OpenMP runtime (Windows)
@@ -143,6 +200,39 @@ jobs:
         run: |
           python -m pip install pytest-xdist
           python -m pytest -v --timeout=900 -n 3 --max-worker-restart=2000
+
+  # The exact add-on's source build on Windows (cpp/fft/exact), both of its paths, as petakit5d's:
+  # MSVC where only the runners' own MinGW-w64 is (left out), then MinGW-builds' GCC 12.2.0 once
+  # tools/get_mingw.sh has put it in its folder; each build's two libraries load and are FFTW 3.3.8
+  addon-windows:
+    name: The exact add-on's source build (Python 3.12 on windows-2025)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Both toolchains' builds
+        run: |
+          check() {
+            took=$(grep -E 'petakit5d-fftw: the Windows toolchain:' "$1" | tr -d '\r')
+            echo "$took"
+            if [ "$(printf '%s\n' "$took" | wc -l)" != 1 ] || [[ "$took" != *"$2" ]]; then
+              echo "::error::the add-on's build took another toolchain than: $2"
+              exit 1
+            fi
+            python -c "import ctypes, petakit5d_fftw as m; v = [(ctypes.c_char * 64).in_dll(ctypes.CDLL(p), n).value for p, n in zip(m.library_paths(), ('fftwf_version', 'fftw_version'))]; print(v); assert all(x.startswith(b'fftw-3.3.8') for x in v), v"
+          }
+          python -m pip install --upgrade pip
+          python -m pip install -v ./cpp/fft/exact > "$RUNNER_TEMP/addon-msvc.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/addon-msvc.log"; exit 1; }
+          grep -E 'petakit5d: no MinGW-builds' "$RUNNER_TEMP/addon-msvc.log" || true
+          check "$RUNNER_TEMP/addon-msvc.log" "the fallback: the attempt with MinGW-w64 failed (its log is above)"
+          bash tools/get_mingw.sh
+          python -m pip install -v --force-reinstall --no-deps ./cpp/fft/exact > "$RUNNER_TEMP/addon-mingw.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/addon-mingw.log"; exit 1; }
+          check "$RUNNER_TEMP/addon-mingw.log" "in tools/get_mingw.sh's folder: the default of source builds"
 
   lint:
     name: ruff

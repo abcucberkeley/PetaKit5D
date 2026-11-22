@@ -96,6 +96,50 @@ sdist.exclude = ["build/", "dist/", ".venv/", "**/__pycache__/**", "cpp/fft/exac
 metadata.version.provider = "scikit_build_core.metadata.regex"
 metadata.version.input = "src/petakit5d/_version.py"
 
+# Windows: a source build takes MinGW-builds' GCC 12.2.0 with the UCRT, the toolchain of the release
+# wheels and of the cpp-zarr and cpp-tiff wheels, where cmake/Pk5dToolchain.cmake finds it (the first
+# gcc on PATH, or tools/get_mingw.sh's folder), else MSVC: a first attempt with Ninja, which fails
+# at its configure without that toolchain, then scikit-build-core's second attempt (if.failed) with
+# its own default there, Visual Studio's generator and MSVC. Not when the environment names a
+# toolchain (CC, CXX, CMAKE_GENERATOR, CMAKE_ARGS, CMAKE_TOOLCHAIN_FILE), nor with
+# PETAKIT5D_WINDOWS_TOOLCHAIN=msvc; PETAKIT5D_WINDOWS_TOOLCHAIN=mingw takes that toolchain or fails
+# (docs/platforms.md, "Windows: the toolchain of a source build"). (An env condition `false` holds
+# for a variable unset, empty or false-like.)
+[[tool.scikit-build.overrides]]
+if.platform-system = "^win32"
+if.failed = false
+if.env.CC = false
+if.env.CXX = false
+if.env.CMAKE_GENERATOR = false
+if.env.CMAKE_ARGS = false
+if.env.CMAKE_TOOLCHAIN_FILE = false
+if.env.PETAKIT5D_WINDOWS_TOOLCHAIN = false
+cmake.args = ["-GNinja"]
+cmake.define.PK5D_WINDOWS_TOOLCHAIN = "default"
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "^win32"
+if.failed = true
+if.env.CC = false
+if.env.CXX = false
+if.env.CMAKE_GENERATOR = false
+if.env.CMAKE_ARGS = false
+if.env.CMAKE_TOOLCHAIN_FILE = false
+if.env.PETAKIT5D_WINDOWS_TOOLCHAIN = false
+cmake.define.PK5D_WINDOWS_TOOLCHAIN = "fallback"
+messages.after-failure = "petakit5d: neither MinGW-builds' GCC 12.2.0 with the UCRT (bash tools/get_mingw.sh fetches it) nor MSVC (Visual Studio 2022 or newer) built the modules: their logs are above"
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "^win32"
+if.env.CC = false
+if.env.CXX = false
+if.env.CMAKE_GENERATOR = false
+if.env.CMAKE_ARGS = false
+if.env.CMAKE_TOOLCHAIN_FILE = false
+if.env.PETAKIT5D_WINDOWS_TOOLCHAIN = "^mingw$"
+cmake.args = ["-GNinja"]
+cmake.define.PK5D_WINDOWS_TOOLCHAIN = "mingw"
+
 # The release wheels (docs/release.md): Linux x86-64 (manylinux_2_28), macOS arm64 and Windows
 # x86-64, for CPython 3.11 and 3.12 (abi3: 3.12 and newer). The exact FFT add-on (cpp/fft/exact)
 # is a package and a wheel of its own, under the GPL.
