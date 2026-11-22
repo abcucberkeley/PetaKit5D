@@ -24,7 +24,7 @@ def main() -> None:
 
     rp = os.path.join(a.folder, "Analysis") + os.sep
     data = {"source": a.folder + os.sep}
-    settings = track_settings((3, 6), 2)
+    settings = track_settings(radius=(3, 6), max_gap_length=2)
     cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
     times = []
     for _ in range(a.repeats):

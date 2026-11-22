@@ -590,8 +590,8 @@ def test_tracking_folders_after_a_one_frame_movie(tmp_path, calls):
 
 def test_reversed_scans_deskewed_in_their_direction(tmp_path, calls, monkeypatch):
     """the wrapper deskews each movie in its direction (W2); matlab_quirks: deskewData's
-    default, forward; deskew_data(reverse=None) is the deskew of each frame with its movie's
-    reverse"""
+    default, forward; its deskew (_deskew_movies, with reverse None) is the deskew of each frame
+    with its movie's reverse"""
     from petakit5d.deskew_rotate.volume import deskew_volume
     from petakit5d.io import read_tiff
 
@@ -599,8 +599,10 @@ def test_reversed_scans_deskewed_in_their_direction(tmp_path, calls, monkeypatch
     write_raw(m, n=1)
     d = cond.load_condition_data(str(m) + os.sep, ["ch1", "ch2"], ["gfp", "rfp"], reversed=True)
     seen = []
-    real = wrapper.deskew_data
-    monkeypatch.setattr(wrapper, "deskew_data", lambda data, **k: seen.append(k["reverse"]) or data)
+    real = wrapper._deskew_movies
+    monkeypatch.setattr(
+        wrapper, "_deskew_movies", lambda data, **k: seen.append(k["reverse"]) or data
+    )
     for q in (False, True):
         wrapper.run_detection_tracking(d, sigma=((1.3, 1.5),), parallel_method="none",
                                        track=False, matlab_quirks=q)  # fmt: skip

@@ -40,6 +40,8 @@ from typing import Any
 
 import numpy as np
 
+from petakit5d.params import Param, register
+
 __all__ = [
     "XZOFF_SHIFTS",
     "ZOFF_SHIFTS",
@@ -232,6 +234,42 @@ def _save_flag(path: str, xzoff: np.ndarray, pad_mat: np.ndarray, channels: Sequ
     )
 
 
+def _movies_from_matlab(x: Any) -> Any:
+    """the condition as the port's movies: MATLAB's struct or struct array, or movies"""
+    from petakit5d.detection.condition import Movie
+
+    if isinstance(x, dict):
+        return [Movie.from_matlab(x)]
+    return [m if isinstance(m, Movie) else Movie.from_matlab(dict(m)) for m in x]
+
+
+def _movies_to_matlab(x: Any) -> Any:
+    from petakit5d.detection.condition import movies_to_matlab
+
+    return movies_to_matlab(x)
+
+
+def _condition_to_matlab(data: Any) -> Any:
+    """the returned condition as MATLAB's struct array (as XR_loadConditionData3D returns it)"""
+    from petakit5d.detection.condition import struct_array
+
+    return struct_array(data)
+
+
+@register(
+    "XR_correctXZoffsetData3D",
+    Param(
+        "data",
+        "@isstruct",
+        "The condition (load_condition_data's movies).",
+        convert=(_movies_from_matlab, _movies_to_matlab),
+    ),
+    Param("Overwrite", "@islogical", "Estimate and pad again the movies whose offsets exist."),
+    Param("DS", "@islogical", "Use the deskewed frames as the estimate's input images."),
+    Param("sCMOSCameraFlip", "@islogical", "sCMOS camera flip of the frames read."),
+    task="C04",
+    matlab_out=_condition_to_matlab,
+)
 def correct_xz_offset_data(
     data: Sequence[Any],
     *,
@@ -241,7 +279,8 @@ def correct_xz_offset_data(
 ) -> Sequence[Any]:
     """``XR_correctXZoffsetData3D(data, 'Overwrite', overwrite, 'DS', ds, 'sCMOSCameraFlip',
     flip)``: line the channels' DS frames up in x and z (module docstring). ``data`` is the
-    condition (``condition.Movie`` items); it is returned unchanged."""
+    condition (``condition.Movie`` items); it is returned unchanged. Registered with the lab's
+    interface and validators."""
     for flag, name in (
         (overwrite, "Overwrite"),
         (ds, "DS"),

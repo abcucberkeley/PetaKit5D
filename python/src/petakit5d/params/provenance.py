@@ -27,6 +27,8 @@ _CME_EDITED = f"{_CME}, with lab edits"
 THIRD_PARTY: dict[str, str] = {
     "imageProcessing/": "an outside-author folder",
     "pointDetection/CMEAnalysis_104_XR/": "an outside-author folder (CMEAnalysis)",
+    "pointDetection/CMEAnalysis_104_XR/software/loadTrackSettings.m": _CME,
+    "pointDetection/CMEAnalysis_104_XR/software/plotIntensityCohorts.m": _CME,
     "pointDetection/llsmtools/": "an outside-author folder (llsmtools)",
     "pointDetection/deskewData.m": "its header names an outside author",
     "pointDetection/XR_loadConditionData3D.m": _CME_EDITED,
@@ -48,6 +50,7 @@ THIRD_PARTY: dict[str, str] = {
 # the lab's code in those folders (headers that name the lab's authors only), and sim3D
 LAB: dict[str, str] = {
     "pointDetection/GU_estimateSigma3D.m": "a lab author",
+    "pointDetection/XR_correctXZoffsetData3D.m": "a lab author",
     "pointDetection/XR_runDetTrack3d.m": "lab authors (based on cmeAnalysis)",
     "pointDetection/src/XR_amiraWriteTracks.m": "a lab author (based on outside code)",
     "pointDetection/src/XR_get_camera_standard_deviation_threshold.m": "a lab author",
@@ -65,8 +68,11 @@ class ProvenanceError(ValueError):
 
 
 def _lookup(table: dict[str, str], file: str) -> str | None:
+    """the reason of a file's own entry, else of the first folder that holds it"""
+    if file in table:
+        return table[file]
     for key, why in table.items():
-        if file == key or (key.endswith("/") and file.startswith(key)):
+        if key.endswith("/") and file.startswith(key):
             return why
     return None
 

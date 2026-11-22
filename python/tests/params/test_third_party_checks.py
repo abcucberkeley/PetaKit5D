@@ -15,15 +15,16 @@ as accepted. The Python side binds the same values through the spec's MATLAB-nam
 names, positions and checks, without the conversions to Python's form. Values outside the
 batteries may still be taken otherwise.
 
-``data`` of the tracking and track-processing wrappers: MATLAB computes the defaults of
-``ResultsPath`` and ``Frames`` from ``data`` before it checks it, so a value it cannot compute
-them from fails there, outside inputParser. The batteries hold structs and the empty values
-of each class, which reach the checks.
+``data`` of the tracking and track-processing wrappers and of ``plotIntensityCohorts``: MATLAB
+computes defaults from ``data`` before it checks it (``ResultsPath`` and ``Frames``; the
+channels), so a value it cannot compute them from fails there, outside inputParser. The
+batteries hold structs and the empty values of each class, which reach the checks.
 
-``runLifetimeAnalysis3D``'s options are probed with one movie whose tracks are missing: its
-``data`` passes MATLAB's check, and each call that the parser takes fails reading the tracks,
-after the parse. Its check of ``data`` takes the movies' frame rates, so the port's function
-checks ``data`` itself and its spec has no check of the port's.
+The options of ``runLifetimeAnalysis3D`` and ``plotIntensityCohorts`` are probed with one movie
+whose tracks are missing: its ``data`` passes MATLAB's check, and each call that the parser
+takes fails reading the tracks, after the parse. ``runLifetimeAnalysis3D``'s check of ``data``
+takes the movies' frame rates, so the port's function checks ``data`` itself and its spec has no
+check of the port's.
 """
 
 from __future__ import annotations
@@ -132,6 +133,13 @@ TYPES = {"all": "all", "Ia": "Ia", "upper_all": "ALL", "string_all": mstring("al
          "cell_all": mcell("all")}  # fmt: skip
 DENSITY = {"mean": "mean", "median": "median", "upper_mean": "MEAN",
            "string_mean": mstring("mean"), "cell_mean": mcell("mean")}  # fmt: skip
+# plotIntensityCohorts' text options: the default, its case, string and cell (and the side
+# opposite the default alignment)
+FILL = {"default": "SEM", "lower": "sem", "string": mstring("SEM"), "cell": mcell("SEM")}
+REFERENCE = {"default": "med", "upper": "MED", "string": mstring("med"), "cell": mcell("med")}
+ALIGN = {"default": "left", "right": "right", "upper": "LEFT", "string": mstring("left"),
+         "cell": mcell("left")}  # fmt: skip
+AVERAGE = {"default": MFunc("@nanmean"), "mean": MFunc("@mean")}
 
 # the leading arguments of each function's calls
 VOL = np.arange(120, dtype=np.uint16).reshape(6, 5, 4)
@@ -163,10 +171,52 @@ DATA = {
     "char_empty": "",
     "cell_empty": EMPTY_CELL,
 }
+# movies with channels and frame rates (plotIntensityCohorts takes its channels from data)
+_LM = LIFETIME_MOVIE[0].items[0]
+PIC_DATA = {
+    "lifetime_movie": LIFETIME_MOVIE[0],
+    "two_lifetime_movies": MStruct((1, 2), list(_LM), [_LM, _LM]),
+    "column_of_lifetime_movies": MStruct((2, 1), list(_LM), [_LM, _LM]),
+    "two_frame_rates": MStruct((1, 2), list(_LM), [_LM, {**_LM, "framerate": to_mvalue(1.0)}]),
+}
+# deskewData's movie: the condition loader's fields of a movie whose frames are missing (each call
+# that the parser takes fails after the parse, reading them)
+_DS_FIELDS = {
+    "source": "movie_missing/",
+    "channels": mcell("movie_missing/ch1/"),
+    "date": None,
+    "framerate": 2.0,
+    "imagesize": [30.0, 20.0, 10.0],
+    "movieLength": 2.0,
+    "markers": mcell("gfp"),
+    "framePaths": mcell(MCell((2, 1), [to_mvalue("movie_missing/ch1/f1.tif"),
+                                        to_mvalue("movie_missing/ch1/f2.tif")])),
+    "maskPaths": MCell((2, 1), [to_mvalue("movie_missing/Detection/Masks/m1.tif"),
+                                to_mvalue("movie_missing/Detection/Masks/m2.tif")]),
+    "pixelSize": 0.104,
+    "dz": 0.5,
+    "zAniso": 2.4,
+    "angle": 31.5,
+    "objectiveScan": False,
+    "reversed": False,
+    "framePathsDS": mcell(MCell((2, 1), [to_mvalue("movie_missing/ch1/DS/f1.tif"),
+                                          to_mvalue("movie_missing/ch1/DS/f2.tif")])),
+    "framePathsDSR": mcell(MCell((2, 1), [to_mvalue("movie_missing/ch1/DSR/f1.tif"),
+                                           to_mvalue("movie_missing/ch1/DSR/f2.tif")])),
+}  # fmt: skip
+DS_MOVIE = _structs((1, 1), list(_DS_FIELDS), [_DS_FIELDS])
+DS_DATA = {
+    "loader_movie": DS_MOVIE,
+    "two_loader_movies": MStruct((1, 2), list(_DS_FIELDS), [DS_MOVIE.items[0]] * 2),
+}
+# deskewData's text options: a path
+PATHS = {"path": "flatfield_ch1.tif"}
 # the first arguments of a call of the "data" cases' functions that reaches their parse
 DATA_LEAD = {
     "XR_runTracking3D": [NO_MOVIES],
     "XR_runTrackProcessing3D": [NO_MOVIES],
+    "plotIntensityCohorts": LIFETIME_MOVIE,
+    "deskewData": [DS_MOVIE],
 }
 
 # the name-value parameters of each function with a value each takes (its default): text at an
@@ -181,6 +231,12 @@ NAMES = {
                                "ChannelPatterns": EMPTY_CELL, "Angle": 31.5, "PixelSize": 0.104,
                                "dz": None, "ObjectiveScan": False, "Reversed": False,
                                "FrameRate": None},
+    "deskewData": {"Overwrite": False, "MovieSelector": "cell", "Crop": False, "SkewAngle": 31.5,
+                   "Rotate": False, "CheckFrameMismatch": False, "LoadSettings": False,
+                   "sCMOSCameraFlip": False, "LLFFCorrection": False, "LowerLimit": 0.4,
+                   **{f"LSImageCh{c}": "" for c in range(1, 5)},
+                   **{f"BackgroundCh{c}": "" for c in range(1, 5)},
+                   "Save16bit": False, "aname": "", "ZoffsetCorrection": False},
 }  # fmt: skip
 
 # function, parameter, leading arguments, how the value is given ("pos": the next argument,
@@ -257,6 +313,41 @@ PROBED = [
     ("runLifetimeAnalysis3D", "MaskPath", LIFETIME_MOVIE, "pair",
      {"default": "Detection/cellmask.tif"}),
     ("runLifetimeAnalysis3D", "Binning", LIFETIME_MOVIE, "pair", {"default": 1.0}),
+    ("plotIntensityCohorts", "data", [], "data", PIC_DATA),
+    ("plotIntensityCohorts", "Overwrite", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "ShowVariation", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "FillMode", LIFETIME_MOVIE, "pair", FILL),
+    ("plotIntensityCohorts", "FrontLayer", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "ShowBackground", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "Rescale", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "RescalingReference", LIFETIME_MOVIE, "pair", REFERENCE),
+    ("plotIntensityCohorts", "ScaleSlaveChannel", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "ScalingFactor", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "ExcludeVisitors", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "SlaveName", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "RemoveOutliers", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "PlotXLabel", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "ShowPct", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "ShowStats", LIFETIME_MOVIE, "pair", {}),
+    ("plotIntensityCohorts", "AvgFun", LIFETIME_MOVIE, "pair", AVERAGE),
+    ("plotIntensityCohorts", "Align", LIFETIME_MOVIE, "pair", ALIGN),
+    ("plotIntensityCohorts", "AnalysisPath", LIFETIME_MOVIE, "pair", {"default": "Analysis"}),
+    ("deskewData", "data", [], "data", DS_DATA),
+    ("deskewData", "Reverse", [DS_MOVIE], "pos", {}),
+    ("deskewData", "Overwrite", [DS_MOVIE], "pair", {}),
+    ("deskewData", "MovieSelector", [DS_MOVIE], "pair", {"default": "cell"}),
+    ("deskewData", "Crop", [DS_MOVIE], "pair", {}),
+    ("deskewData", "SkewAngle", [DS_MOVIE], "pair", {"default": 31.5, "angle45": 45.0}),
+    ("deskewData", "Rotate", [DS_MOVIE], "pair", {}),
+    ("deskewData", "CheckFrameMismatch", [DS_MOVIE], "pair", {}),
+    ("deskewData", "LoadSettings", [DS_MOVIE], "pair", {}),
+    ("deskewData", "sCMOSCameraFlip", [DS_MOVIE], "pair", {}),
+    ("deskewData", "LLFFCorrection", [DS_MOVIE], "pair", {}),
+    ("deskewData", "LowerLimit", [DS_MOVIE], "pair", {"default": 0.4}),
+    *[("deskewData", f"{k}{c}", [DS_MOVIE], "pair", PATHS)
+      for k in ("LSImageCh", "BackgroundCh") for c in range(1, 5)],
+    ("deskewData", "Save16bit", [DS_MOVIE], "pair", {}),
+    ("deskewData", "ZoffsetCorrection", [DS_MOVIE], "pair", {}),
 ]  # fmt: skip
 
 
@@ -380,7 +471,7 @@ def test_matlab(case, tmp_path):
 
 # probed parameters that need no check of the port's: MATLAB took every probe at its parse (its
 # errors came before or after it)
-UNCHECKED: set[tuple[str, str]] = set()
+UNCHECKED = {("plotIntensityCohorts", "data")}
 
 
 def test_every_check_of_the_port_is_probed(extract):
