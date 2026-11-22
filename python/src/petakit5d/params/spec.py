@@ -425,9 +425,8 @@ def _port_pred(name: str, x: Any) -> bool:
         return not _pred(arg, x)
     if kind == "string":
         return isinstance(x, _v.MString)
-    if kind == "vector":  # MATLAB's isvector: 1-by-n or n-by-1, n >= 0
-        sz = _size(x)
-        return len(sz) == 2 and (sz[0] == 1 or sz[1] == 1)
+    if kind == "vector":
+        return _pred("isvector", x)
     if kind == "numel":
         return _numel(x) == int(arg)
     if kind == "in":
@@ -511,9 +510,9 @@ def _pred(name: str, x: Any) -> bool:
         return _numel(x) == 0
     if name == "isscalar":
         return _numel(x) == 1
-    if name == "isvector":
+    if name == "isvector":  # MATLAB's: 1-by-n or n-by-1, n >= 0 (not 0x0, not n-D)
         sz = _size(x)
-        return len(sz) == 2 and (sz[0] == 1 or sz[1] == 1) and sz[0] * sz[1] >= 1
+        return len(sz) == 2 and (sz[0] == 1 or sz[1] == 1)
     raise RegistryError(f"unknown predicate {name}")
 
 
@@ -522,7 +521,11 @@ def _size(x: Any) -> tuple[int, ...]:
         return (0, 0)
     if hasattr(x, "shape") and not isinstance(x, _v.MArray | _v.Cell):
         shp = tuple(int(n) for n in x.shape)
-        return shp if len(shp) >= 2 else (1, shp[0]) if shp else (1, 1)
+        if len(shp) < 2:
+            return (1, shp[0]) if shp else (1, 1)
+        while len(shp) > 2 and shp[-1] == 1:  # MATLAB's size has no trailing singletons
+            shp = shp[:-1]
+        return shp
     if isinstance(x, Mapping) or (callable(x) and not isinstance(x, str)):
         return (1, 1)
     if isinstance(x, list | tuple) and x and all(isinstance(e, list | tuple) for e in x):
