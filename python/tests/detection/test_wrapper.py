@@ -423,6 +423,9 @@ CASES = _cases() + [
         py_args=[InPath("cond")],
         nargout=0,
         inputs={"cond": Tree(make_det_condition, "cond")},
+        # the detections' Amira writer warns without identifier: third-party, text withheld
+        # (MATLAB's mkdir warning, which keeps its identifier, loses its text too)
+        warning_text="withheld",
         marks=("slow",),
     ),
     Case(
@@ -434,6 +437,7 @@ CASES = _cases() + [
         py_args=[InPath("cond"), [f"{n}/" for n, _ in ONE_FRAME]],
         nargout=0,
         inputs={"cond": Tree(make_one_frame_condition, "cond")},
+        warning_text="withheld",  # as above
         marks=("slow",),
     ),
 ]

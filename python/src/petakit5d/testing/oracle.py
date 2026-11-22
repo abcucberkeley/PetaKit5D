@@ -429,18 +429,38 @@ def _clean_text(s: str, masks: Masks) -> str:
     return _ABS_PATH.sub("<PATH>", masks.text(s or ""))
 
 
-# a message of MATLAB code whose texts the repository does not keep (Case.error_text)
+# a message of MATLAB code whose texts the repository does not keep (Case.error_text and
+# Case.warning_text)
 WITHHELD_TEXT = "(third-party text: withheld)"
 
 
-def _message(case: Case, d: dict | None) -> str:
+def _withheld(case: Case, kind: str) -> bool:
+    """whether the case withholds MATLAB's texts of this kind ('error' or 'warning')"""
+    return case.error_text == "withheld" if kind == "error" else case.withholds_warnings
+
+
+def _message(case: Case, d: dict | None, kind: str = "error") -> str:
     """the message of a reference's error or warning as reports may show it"""
-    return WITHHELD_TEXT if case.error_text == "withheld" else (d or {}).get("message", "")
+    return WITHHELD_TEXT if _withheld(case, kind) else (d or {}).get("message", "")
+
+
+def withheld_problems(case: Case, entry: dict) -> list[str]:
+    """where a manifest entry keeps a message the case withholds (it was written before the
+    case withheld it), by place only: the text is not shown"""
+    out = []
+    err = entry.get("error")
+    if _withheld(case, "error") and err and err.get("message") != WITHHELD_TEXT:
+        out.append("the error's message")
+    if _withheld(case, "warning"):
+        n = sum(w.get("message") != WITHHELD_TEXT for w in entry.get("warnings") or [])
+        if n:
+            out.append(f"{n} warning messages")
+    return out
 
 
 def manifest_entry(case: Case, ref: Reference) -> dict:
     """the manifest entry of a stored reference: no paths, hosts or times (and no message
-    texts of a case whose texts are withheld)"""
+    texts that the case withholds)"""
     m = ref.masks.with_paths(oracle=str(oracle_dir() or ""), golden=os.environ.get(ENV_GOLDEN, ""))
     outs = None
     if ref.outputs is not None:
@@ -449,12 +469,12 @@ def manifest_entry(case: Case, ref: Reference) -> dict:
     if ref.files is not None:
         files = describe_tree(ref.files, case.tree, ref.masks.plus(*case.tree.masks))
 
-    def text(d: dict) -> str:
-        return _clean_text(_message(case, d), m)
+    def text(d: dict, kind: str) -> str:
+        return _clean_text(_message(case, d, kind), m)
 
     err = None
     if ref.error:
-        err = {"identifier": ref.error.get("identifier", ""), "message": text(ref.error)}
+        err = {"identifier": ref.error.get("identifier", ""), "message": text(ref.error, "error")}
     return {
         "key": ref.key,
         "oracle": ref.commit,
@@ -463,7 +483,8 @@ def manifest_entry(case: Case, ref: Reference) -> dict:
         "status": ref.status,
         "error": err,
         "warnings": [
-            {"identifier": w.get("identifier", ""), "message": text(w)} for w in ref.warnings
+            {"identifier": w.get("identifier", ""), "message": text(w, "warning")}
+            for w in ref.warnings
         ],
         "outputs": outs,
         "files": files,
@@ -611,6 +632,15 @@ def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
         pw = sorted(w.get("identifier", "") for w in res.warnings)
         if rw != pw:
             rep.add("warnings", "warnings", f"warning identifiers: MATLAB {rw}, Python {pw}")
+        # withheld texts leave the identifiers to compare, an empty one too: the port sets them
+        bare = [w for w in res.warnings if not w.get("identified", True)]
+        if case.withholds_warnings and bare:
+            rep.add(
+                "warnings",
+                "identifier",
+                f"{len(bare)} Python warnings have no identifier attribute (the case compares "
+                f"identifiers only): {sorted({w.get('category', '?') for w in bare})}",
+            )
     return rep
 
 
@@ -664,6 +694,14 @@ def reference(case: Case) -> Reference:
     key = case.key()
     mpath = manifest_path(case)
     entry = load_manifest(mpath).get(case.id)
+    if entry is not None and entry.get("key") == key:
+        kept = withheld_problems(case, entry)
+        if kept:
+            pytest.fail(
+                f"case {case.id}: manifest {mpath.name} keeps {' and '.join(kept)} that the "
+                "case withholds (third-party texts): run orun.sh --manifest",
+                pytrace=False,
+            )
     missing = os.environ.get(ENV_MISSING, "fail")
     store = Store.from_env()
     if store is not None:
@@ -1095,6 +1133,8 @@ def cmd_status(ns: argparse.Namespace) -> int:
             ms = "manifest out of date (case changed)"
         elif not same_commit(e.get("oracle", ""), exp):
             ms = f"manifest from oracle {short(e.get('oracle', '?'))}"
+        elif withheld_problems(c, e):
+            ms = "manifest keeps texts the case withholds"
         else:
             ms = "manifest current"
         n_bad += ms != "manifest current"

@@ -894,6 +894,129 @@ def test_a_withheld_error_text_stays_out_of_the_manifest(tmp_path, monkeypatch):
         Case("x", matlab="f", error_text="hidden")
 
 
+class _PortWarning(UserWarning):
+    def __init__(self, identifier):
+        super().__init__("the port's own words")
+        if identifier is not None:
+            self.identifier = identifier
+
+
+def test_a_withheld_warning_text_stays_out_of_the_manifest(tmp_path, monkeypatch):
+    """Case(warning_text='withheld') (third-party MATLAB warnings): the manifest keeps each
+    warning's identifier, an empty one too (so their number), not its message, and the error's
+    text; no report shows the warnings' texts; with warnings='ids' the Python warnings are
+    compared by identifier and must carry one; a manifest that keeps a withheld text fails"""
+    commit = oracle.expected_commit()
+    golden = tmp_path / "golden"
+    golden.mkdir()
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+    monkeypatch.setenv(oracle.ENV_COMMIT, commit)
+    monkeypatch.delenv(oracle.ENV_ORACLE, raising=False)
+    store = oracle.Store(golden, commit)
+    mfile = tmp_path / "tpw.oracle.json"
+    test_file = str(tmp_path / "test_tpw.py")
+    globs = {"__file__": test_file, "ORACLE_MANIFEST": str(mfile)}
+    secrets = ("a third-party warning", "another third-party warning", "a recorded error")
+    recorded = [
+        {"identifier": "", "message": secrets[0]},
+        {"identifier": "tp:warns", "message": secrets[1]},
+    ]
+
+    def make(ids, warning_text="withheld", mode="ids", cid="tpw", **kw):
+        # the Python side warns with these identifiers (None: a warning without the attribute)
+        def py(x):
+            for i in ids:
+                warnings.warn(_PortWarning(i), stacklevel=1)
+            if kw.get("expect_error"):
+                raise _ThirdPartyError("stats:x:y")
+            return x
+
+        c = Case(
+            cid,
+            matlab="error" if kw.get("expect_error") else "disp",  # two keys, two results
+            args=[3.0],
+            python=py,
+            warning_text=warning_text,
+            warnings=mode,
+            py_error=_ThirdPartyError,
+            **kw,
+        )
+        c._module_globals = globs
+        return c
+
+    def write(*cases):
+        oracle._REGISTRY[test_file] = list(cases)
+        oracle._write_manifests([("n", c) for c in cases], store, None)
+        return mfile.read_text(), json.loads(mfile.read_text())["cases"]
+
+    def fails(case, where, problem):
+        with pytest.raises(pytest.fail.Exception) as err:
+            oracle.check(case, tmp_path / f"{where}_{len(list(tmp_path.iterdir()))}")
+        msg = str(err.value)
+        assert problem in msg and not any(s in msg for s in secrets), msg
+
+    case = make(["", "tp:warns"])
+    fake_publish(store, case, [3.0], warnings=recorded)
+    err_case = make([], cid="tpw_err", expect_error="stats:x:y")
+    error = {"identifier": "stats:x:y", "message": secrets[2]}
+    fake_publish(store, err_case, [], status="error", error=error, warnings=recorded[:1])
+    with pytest.warns(UserWarning, match="manifest"):
+        oracle.check(case, tmp_path / "s0")  # store: the identifiers agree
+    text, entries = write(case, err_case)
+    assert secrets[0] not in text and secrets[1] not in text
+    withheld = [
+        {"identifier": "", "message": oracle.WITHHELD_TEXT},
+        {"identifier": "tp:warns", "message": oracle.WITHHELD_TEXT},
+    ]
+    assert entries["tpw"]["warnings"] == withheld and entries["tpw"]["error"] is None
+    assert entries["tpw_err"]["error"] == error  # the error keeps its text
+    assert entries["tpw_err"]["warnings"] == withheld[:1]
+    # the key leaves it alone
+    assert entries["tpw"]["key"] == case.key() == make([], "record", "record").key()
+    for where in ("store", "manifest"):
+        if where == "store":
+            monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+        else:
+            monkeypatch.delenv(oracle.ENV_GOLDEN, raising=False)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            oracle.check(make(["tp:warns", ""]), tmp_path / f"{where}_ok")
+            oracle.check(make([], mode="record"), tmp_path / f"{where}_rec")  # not compared
+            raising = make([], cid="tpw_err", expect_error="stats:x:y", mode="record")
+            oracle.check(raising, tmp_path / f"{where}_err")
+            fails(make(["tp:warns"]), where, "MATLAB ['', 'tp:warns'], Python ['tp:warns']")
+            fails(make([None, "tp:warns"]), where, "1 Python warnings have no identifier")
+    # recorded texts are kept, and a warning without the attribute is taken for an empty one
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+    rec = make(["", "tp:warns"], "record")
+    _, entries = write(rec)
+    assert entries["tpw"]["warnings"] == recorded
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        oracle.check(make([None, "tp:warns"], "record"), tmp_path / "rec_bare")
+        # that manifest keeps texts the withheld case does not: it fails until written again
+        for where in ("store", "manifest"):
+            if where == "manifest":
+                monkeypatch.delenv(oracle.ENV_GOLDEN, raising=False)
+            fails(make(["", "tp:warns"]), where, "keeps 2 warning messages that the case withholds")
+    # and an error's text kept for a case that now withholds it (error_text: its warnings too)
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+    write(make([], "record", cid="tpw_err", expect_error="stats:x:y"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        for where in ("store", "manifest"):
+            if where == "manifest":
+                monkeypatch.delenv(oracle.ENV_GOLDEN, raising=False)
+            now = make([], "record", cid="tpw_err", expect_error="stats:x:y", error_text="withheld")
+            fails(now, where, "keeps the error's message and 1 warning messages")
+    assert oracle.withheld_problems(rec, entries["tpw"]) == []
+    assert Case("x", matlab="f", error_text="withheld").withholds_warnings
+    assert Case("x", matlab="f", warning_text="withheld").withholds_warnings
+    assert not Case("x", matlab="f").withholds_warnings
+    with pytest.raises(ValueError, match="warning_text is 'record' or 'withheld'"):
+        Case("x", matlab="f", warning_text="hidden")
+
+
 def test_a_tolerance_on_a_hash_only_manifest_is_skipped_not_failed(tmp_path, monkeypatch):
     # with the store a tolerance passes; the manifest keeps only the hash of this array, from
     # which a tolerance cannot be decided: the test is skipped in CI, never failed or passed

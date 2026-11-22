@@ -379,6 +379,9 @@ def _cases() -> list[Case]:
                 inputs={"data": Tree(lambda p, n=n: make_dataset(p, n), "data")},
                 compare={0: EXACT, 1: cmp.tolerances()["*/sigma.mat"]},
                 tree=_case_tree(),
+                # the detections' Amira writer warns without identifier: third-party code, its
+                # text withheld
+                warning_text="withheld",
                 marks=("slow",),
             )
         )

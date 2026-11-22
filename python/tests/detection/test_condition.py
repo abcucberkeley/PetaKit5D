@@ -203,10 +203,13 @@ def _cases():
     tree = {"t": Tree(make_tree, "t")}
     cs = []
 
-    def add(cid, rel, chs=CH, mks=MK, opts=(), two_d=False, error=None, inputs=None, code=None):
+    def add(cid, rel, chs=CH, mks=MK, opts=(), two_d=False, error=None, inputs=None, code=None,
+            withheld=False):  # fmt: skip
         kw = {}
         if error is not None:
             kw = {"expect_error": error, "py_error": (cond.ConditionError,)}
+        if withheld:
+            kw["error_text"] = "withheld"
         cs.append(
             Case(
                 cid,
@@ -271,7 +274,8 @@ def _cases():
         ["ch1", "ch3"],
         error="MATLAB:Java:InvalidInput",
     )
-    add("load.err_no_movies", "nothing/", error=True)
+    # the loader's own error without identifier: third-party code, its text withheld
+    add("load.err_no_movies", "nothing/", error=True, withheld=True)
     add("load.err_unknown_marker", "one/Ex1_syn_z0p5/", CH, ["gfp", "foo"],
         error="MATLAB:services:MissingRequiredCapability")  # fmt: skip
     add("load.err_fewer_markers", "one/Ex1_syn_z0p5/", CH, ["gfp"], error="MATLAB:badsubscript")
