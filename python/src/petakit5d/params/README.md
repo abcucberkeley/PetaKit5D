@@ -57,12 +57,17 @@ Rules:
   meanings, and the table shows `(third-party: not shown)`. Where MATLAB validates a
   parameter, the spec may give the port's own check instead, made from MATLAB's behaviour:
   `accepts="logical"`, `"char | cell"`, `"empty | numeric & nonnegative-whole"`
-  (`spec.accepts_alternatives` lists the words). Its probe case in
-  `tests/params/test_third_party_checks.py` calls the MATLAB function with a battery of
-  designed values and checks that the MATLAB-name layer takes and refuses the same, with
-  inputParser's identifiers. A function from `imageProcessing/`, `pointDetection/` or
-  `third_parties/` needs an entry in `provenance.py` (from the author lines of its header,
-  nothing further) before the extract can hold it.
+  (`spec.accepts_alternatives` lists the words). Where MATLAB's check raises an error of its
+  own for a value (inputParser passes it on with the check's identifier), an alternative with
+  `raises(<identifier>)` refuses that value the same way (`MatlabCheckError`):
+  `"in(cubic,linear) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)"`. Its probe
+  case in `tests/params/test_third_party_checks.py` calls the MATLAB function with a battery
+  of designed values through `tests/params/matlab_parse/pkpy_parse_probe.m`, which records
+  for each call 'accepted', inputParser's identifier or `raised(<identifier>)` (an error of
+  the check's own; an error before or after the parse counts as accepted), and checks that the
+  MATLAB-name layer takes and refuses the same. A function from `imageProcessing/`,
+  `pointDetection/` or `third_parties/` needs an entry in `provenance.py` (from the author
+  lines of its header, nothing further) before the extract can hold it.
 - **The signature gives argument kinds and defaults.** Required arguments: positional without
   a default. MATLAB's `addOptional`: positional with a default. Name-value parameters:
   keyword-only (after `*`). Python names are `snake_name(MATLAB name)`

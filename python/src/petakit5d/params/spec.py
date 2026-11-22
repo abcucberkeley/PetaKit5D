@@ -41,6 +41,7 @@ __all__ = [
     "ParamSpec",
     "RegistryError",
     "MatlabArgumentError",
+    "MatlabCheckError",
     "snake_name",
 ]
 
@@ -67,6 +68,12 @@ class MatlabArgumentError(TypeError):
     def __init__(self, message: str, identifier: str):
         super().__init__(message)
         self.identifier = identifier
+
+
+class MatlabCheckError(MatlabArgumentError):
+    """A value refused by an error that the check raises itself, which MATLAB's inputParser
+    passes on with the check's identifier (empty for an error without one): the port's checks
+    of third-party code give it where MATLAB's check raises one (the word ``raises(...)``)."""
 
 
 # ----------------------------------------------------------------------------------------------
@@ -247,7 +254,8 @@ _ACCEPTS_WORDS = {
     "nonnegative-whole": "port:whole",
     "positive-whole": "port:poswhole",
 }
-_ACCEPTS_CALL = re.compile(r"(numel|in)\(([^()|&!]*)\)")
+_ACCEPTS_CALL = re.compile(r"(numel|in|raises)\(([^()|&!]*)\)")
+_RAISES = "port:raises:"
 
 
 def _accepts_word(w: str, text: str) -> str:
@@ -272,17 +280,49 @@ def accepts_alternatives(text: str) -> list[frozenset[str]]:
     along the first dimension that is not 1 take one value; each NaN difference counts as a
     value of its own); ``nonnegative-whole`` (numbers, each whole and >= 0, Inf too);
     ``positive-whole`` (the same, each > 0);
-    ``in(w1,...)`` (text equal to one of the words in any case, or a cell of such texts)."""
+    ``in(w1,...)`` (text equal to one of the words in any case, or a cell of such texts).
+    An alternative with ``raises(<identifier>)`` refuses the values that its other words take,
+    with that identifier (empty: ``raises()``): MATLAB's check raises an error of its own for
+    them, which inputParser passes on. Such alternatives are tried first."""
     alts: list[frozenset[str]] = []
     for alt in text.split("|"):
-        alts.append(frozenset(_accepts_word(word.strip(), text) for word in alt.split("&")))
+        words = [_accepts_word(word.strip(), text) for word in alt.split("&")]
+        raises = [w for w in words if _RAISES in w]
+        if len(raises) > 1 or any(not w.startswith(_RAISES) for w in raises):
+            raise RegistryError(f"accepts={text!r}: one raises(...) per alternative, not negated")
+        alts.append(frozenset(words))
     return alts
+
+
+def _raised(preds: frozenset[str]) -> str | None:
+    """the identifier of an alternative that refuses (raises(...)), or None"""
+    for p in preds:
+        if p.startswith(_RAISES):
+            return p[len(_RAISES) :]
+    return None
+
+
+def _takes(alts: list[frozenset[str]], x: Any) -> tuple[bool, str | None]:
+    """(taken, identifier) of a value: refused with the identifier of the first alternative
+    with raises(...) whose other words take it; else taken if an alternative without one takes
+    it; else refused (None)"""
+    for preds in alts:
+        ident = _raised(preds)
+        if ident is not None and all(_pred(p, x) for p in preds if not p.startswith(_RAISES)):
+            return False, ident
+    return any(_raised(a) is None and all(_pred(p, x) for p in a) for a in alts), None
+
+
+def _taking(alts: list[frozenset[str]]) -> list[frozenset[str]]:
+    """the alternatives that take values (those without raises(...))"""
+    return [a for a in alts if _raised(a) is None]
 
 
 def accepts_mcc(alts: list[frozenset[str]]) -> str:
     """The command-line conversion of a parameter with the port's own check: the generator's
-    rule (mcc_mode) on the classes the check takes (a word's opposite takes none)."""
-    preds = frozenset().union(*alts)
+    rule (mcc_mode) on the classes the check takes (a word's opposite takes none, and neither
+    does an alternative with raises(...))."""
+    preds = frozenset().union(*_taking(alts))
     port = {p.split(":")[1] for p in preds if p.startswith("port:")}
     return _mcc_of(
         [
@@ -423,6 +463,8 @@ def _port_pred(name: str, x: Any) -> bool:
     kind, _, arg = name[len("port:") :].partition(":")
     if kind == "not":
         return not _pred(arg, x)
+    if kind == "raises":
+        raise RegistryError(f"{name} is not a predicate (spec._takes reads it)")
     if kind == "string":
         return isinstance(x, _v.MString)
     if kind == "vector":
@@ -743,7 +785,7 @@ class ParamSpec(_Record):
 
     def cell_hint(self) -> str | None:
         """'cell' when a sequence for this parameter is a MATLAB cell, not a numeric array."""
-        alts = self.alternatives or []
+        alts = _taking(self.alternatives or [])
         preds = set().union(*alts) if alts else set()
         if "iscell" in preds and not preds & {"isnumeric", "islogical", "isfloat", "isvector"}:
             return "cell"
@@ -778,13 +820,21 @@ class ParamSpec(_Record):
 
     def check(self, value: Any, fname: str) -> None:
         """Raise MatlabArgumentError if ``value`` fails the MATLAB validator's class checks
-        (or the port's own check, for third-party code)."""
+        (or the port's own check, for third-party code; MatlabCheckError where MATLAB's check
+        raises an error of its own)."""
         alts = self.alternatives
         if alts is None:
             return
-        for preds in alts:
-            if all(_pred(p, value) for p in preds):
-                return
+        taken, ident = _takes(alts, value)
+        if taken:
+            return
+        if ident is not None:
+            raise MatlabCheckError(
+                f"The value of '{self.matlab}' is invalid. The port's check ({self.accepts}) "
+                f"refuses it with {ident or 'an error without an identifier'}, as MATLAB's "
+                "check does.",
+                ident,
+            )
         must = (
             f"pass the port's check: {self.accepts}"
             if self.accepts is not None
@@ -810,7 +860,7 @@ def _kind_of(d: Param, where: str) -> Any:
 def _passes(p: ParamSpec, value: Any) -> bool:
     if p.alternatives is None:
         return True
-    return any(all(_pred(q, value) for q in alt) for alt in p.alternatives)
+    return _takes(p.alternatives, value)[0]
 
 
 def _as_matlab_sees(p: ParamSpec, value: Any) -> Any:

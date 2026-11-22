@@ -1,26 +1,29 @@
 """The port's own checks of the parameters of third-party MATLAB functions, against MATLAB.
 
 The repository keeps no validator text of third-party MATLAB code (decided on 2026-11-20). A
-parameter that MATLAB validates gets a check of the port's own instead (``Param(check=...)``),
+parameter that MATLAB validates gets a check of the port's own instead (``Param(accepts=...)``),
 made from MATLAB's behaviour. Each case here calls the MATLAB function of one such parameter
-with a battery of designed values (``matlab/pkpy_x27_probe.m``) and records, for each value,
-whether the call gets past MATLAB's inputParser or the identifier of inputParser's error, never
-a message (inputParser's messages print the validator). The Python side binds the same values
-through the spec's MATLAB-name layer: its names, positions and checks, without the conversions
-to Python's form. Values outside the batteries may still be taken otherwise.
+with a battery of designed values (``matlab_parse/pkpy_parse_probe.m``) and records, for each
+value, 'accepted' (no error while the function's inputParser parsed the call), the identifier
+of inputParser's own error, or 'raised(<identifier>)' for an error that MATLAB's check raised
+itself (inputParser passes it on with the check's identifier; the port's word
+``raises(<identifier>)``). It keeps no message (inputParser's messages print the validator) and
+no name of a stack frame (an anonymous validator's text). A call of each function that
+inputParser refuses (a parameter's name without its value) gives the helper the place where
+inputParser raises its errors, so an error raised elsewhere, before or after the parse, counts
+as accepted. The Python side binds the same values through the spec's MATLAB-name layer: its
+names, positions and checks, without the conversions to Python's form. Values outside the
+batteries may still be taken otherwise.
 
 ``data`` of the tracking and track-processing wrappers: MATLAB computes the defaults of
-``ResultsPath`` and ``Frames`` from ``data`` before it checks it, so a value that is not a
-struct fails there, outside inputParser, unless it is empty. Its battery holds structs and the
-empty values of each class, which reach the checks.
+``ResultsPath`` and ``Frames`` from ``data`` before it checks it, so a value it cannot compute
+them from fails there, outside inputParser. The batteries hold structs and the empty values
+of each class, which reach the checks.
 
 ``runLifetimeAnalysis3D``'s options are probed with one movie whose tracks are missing: its
-``data`` passes MATLAB's check (which takes the movies' frame rates, so the port's function
-checks ``data`` itself and its spec has no check of the port's), and each call that the parser
-takes fails reading the tracks. The helper counts any error other than inputParser's as taken,
-an error that a check raises itself too: the port's checks take what MATLAB's parser does not
-refuse with its identifiers (``Display``'s cells of other than one element, ``Binning``'s cells,
-structs, strings and handles).
+``data`` passes MATLAB's check, and each call that the parser takes fails reading the tracks,
+after the parse. Its check of ``data`` takes the movies' frame rates, so the port's function
+checks ``data`` itself and its spec has no check of the port's.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from petakit5d.params import MatlabArgumentError
+from petakit5d.params import MatlabArgumentError, MatlabCheckError
 from petakit5d.params import values as mv
 from petakit5d.params.registry import REGISTRY
 from petakit5d.testing import oracle
@@ -47,7 +50,7 @@ from petakit5d.testing.compare import (
     to_mvalue,
 )
 
-HELPERS = ["tests/params/matlab"]
+HELPERS = ["tests/params/matlab_parse"]
 
 
 def _cell(items: list, size: tuple[int, ...] | None = None) -> MCell:
@@ -160,6 +163,11 @@ DATA = {
     "char_empty": "",
     "cell_empty": EMPTY_CELL,
 }
+# the first arguments of a call of the "data" cases' functions that reaches their parse
+DATA_LEAD = {
+    "XR_runTracking3D": [NO_MOVIES],
+    "XR_runTrackProcessing3D": [NO_MOVIES],
+}
 
 # the name-value parameters of each function with a value each takes (its default): text at an
 # optional argument may be a name, alone or followed by a value
@@ -270,8 +278,14 @@ def probes(fname: str, param: str, how: str, extra: dict) -> dict[str, list]:
     return out
 
 
-def _arg(x: object) -> MValue:
-    return x if isinstance(x, MValue) else to_mvalue(x)
+def calibration(fname: str, param: str, how: str) -> list:
+    """the arguments after the leading ones of a call that the function's inputParser refuses
+    (where it raises its errors, for the helper): a parameter's name without its value"""
+    if how == "pair":
+        return [param]
+    if how == "pos":
+        return [next(iter(NAMES[fname]))]
+    return [*DATA_LEAD[fname], "Overwrite"]
 
 
 def _case(fname: str, param: str, lead: list, how: str, extra: dict) -> Case:
@@ -279,8 +293,14 @@ def _case(fname: str, param: str, lead: list, how: str, extra: dict) -> Case:
     names = [f"p_{k}" for k in battery]
     return Case(
         f"{fname}.{param}",
-        matlab="pkpy_x27_probe",
-        args=[fname, _cell(lead), mcell(*names), _cell([_cell(a) for a in battery.values()])],
+        matlab="pkpy_parse_probe",
+        args=[
+            fname,
+            _cell(lead),
+            _cell(calibration(fname, param, how)),
+            mcell(*names),
+            _cell([_cell(a) for a in battery.values()]),
+        ],
         python=port_outcomes,
         helpers=HELPERS,
         files=False,
@@ -322,8 +342,21 @@ def _py(v: object) -> object:
     raise TypeError(f"no Python form for {v!r}")
 
 
-def port_outcomes(fname: str, lead: MCell, names: MCell, battery: MCell) -> dict[str, str]:
-    """How the spec's MATLAB-name layer takes the same calls: 'accepted', or the identifier"""
+def outcome(err: MatlabArgumentError | None) -> str:
+    """the helper's record of a call: 'accepted', inputParser's identifier, or
+    'raised(<identifier>)' for an error of the check's own"""
+    if err is None:
+        return "accepted"
+    if isinstance(err, MatlabCheckError):
+        return f"raised({err.identifier})"
+    return err.identifier
+
+
+def port_outcomes(
+    fname: str, lead: MCell, calib: MCell, names: MCell, battery: MCell
+) -> dict[str, str]:
+    """How the spec's MATLAB-name layer takes the same calls, as the helper records them (the
+    calibration call is MATLAB's only)"""
     spec = REGISTRY.find(fname)
     head = [_py(x) for x in lead.items]
     out = {}
@@ -331,9 +364,9 @@ def port_outcomes(fname: str, lead: MCell, names: MCell, battery: MCell) -> dict
         try:
             spec._bind([*head, *(_py(x) for x in call.items)], {})
         except MatlabArgumentError as err:
-            out[name.text()] = err.identifier
+            out[name.text()] = outcome(err)
         else:
-            out[name.text()] = "accepted"
+            out[name.text()] = outcome(None)
     return out
 
 
@@ -345,17 +378,24 @@ def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
 
 
+# probed parameters that need no check of the port's: MATLAB took every probe at its parse (its
+# errors came before or after it)
+UNCHECKED: set[tuple[str, str]] = set()
+
+
 def test_every_check_of_the_port_is_probed(extract):
     """each parameter with a check of the port's own (accepts=) has a case, each case's
-    parameter has one, and each is a parameter whose MATLAB validator the extract withholds"""
+    parameter has one or is in UNCHECKED, and each is a parameter whose MATLAB validator the
+    extract withholds"""
     checked = {
         (s.matlab_name, p.matlab)
         for s in REGISTRY.specs()
         for p in s.params
         if p.accepts is not None
     }
-    assert {(f, p) for f, p, *_ in PROBED} == checked
-    for f, p in checked:
+    assert {(f, p) for f, p, *_ in PROBED} == checked | UNCHECKED
+    assert not checked & UNCHECKED
+    for f, p in checked | UNCHECKED:
         assert any(m.name == p and m.withheld for m in extract[f].params), (f, p)
 
 
@@ -461,6 +501,62 @@ def _takes(accepts: str, value: object) -> bool:
 )
 def test_the_words_of_the_ports_checks(accepts, value, takes):
     assert _takes(accepts, value) is takes
+
+
+REFUSED = "MATLAB:InputParser:ArgumentFailedValidation"
+_EMPTY_CELL = "in(a,b) | cell & empty & raises(MATLAB:x)"
+
+
+@pytest.mark.parametrize(
+    ("accepts", "value", "want"),
+    [
+        (_EMPTY_CELL, mv.Cell([], (0, 0)), "raised(MATLAB:x)"),
+        (_EMPTY_CELL, mv.Cell([], (1, 0)), "raised(MATLAB:x)"),
+        (_EMPTY_CELL, mv.Cell(["a"], (1, 1)), "accepted"),
+        (_EMPTY_CELL, mv.Cell(["c"], (1, 1)), REFUSED),
+        (_EMPTY_CELL, "B", "accepted"),
+        (_EMPTY_CELL, 1.0, REFUSED),
+        # the alternatives with raises(...) are tried first, wherever they stand
+        ("cell | cell & !numel(1) & raises(MATLAB:x)", mv.Cell(["a", "b"], (1, 2)),
+         "raised(MATLAB:x)"),
+        ("cell | cell & !numel(1) & raises(MATLAB:x)", mv.Cell(["a"], (1, 1)), "accepted"),
+        # and among themselves in their order
+        ("cell & raises(MATLAB:first) | cell & raises(MATLAB:second)", mv.Cell([], (0, 0)),
+         "raised(MATLAB:first)"),
+        ("logical | cell & raises()", mv.Cell([], (0, 0)), "raised()"),  # without an identifier
+        ("empty | numeric & !scalar & !empty & raises(MATLAB:y)", (1.0, 2.0), "raised(MATLAB:y)"),
+        ("empty | numeric & !scalar & !empty & raises(MATLAB:y)", None, "accepted"),
+        ("empty | numeric & !scalar & !empty & raises(MATLAB:y)", 2.0, REFUSED),
+    ],
+)  # fmt: skip
+def test_raises_refuses_with_the_identifier_of_matlabs_check(accepts, value, want):
+    """an alternative with raises(<identifier>) refuses what its other words take, with
+    MatlabCheckError and that identifier (the helper's 'raised(<identifier>)')"""
+    try:
+        _spec(accepts).param("x").check(value, "XR_words_fake")
+    except MatlabArgumentError as err:
+        assert isinstance(err, MatlabCheckError) is want.startswith("raised(")
+        got = outcome(err)
+    else:
+        got = outcome(None)
+    assert got == want
+
+
+def test_raises_takes_no_value_and_stands_once_per_alternative():
+    from petakit5d.params.spec import RegistryError, accepts_alternatives, accepts_mcc
+
+    # the command line and the cell hint follow the alternatives that take values
+    assert accepts_mcc(accepts_alternatives("evenly-spaced | cell & raises(MATLAB:x)")) == "str2num"
+    assert accepts_mcc(accepts_alternatives("in(a,b) | cell & !numel(1) & raises(x)")) == "none"
+    assert _spec("evenly-spaced | cell & raises(MATLAB:x)").param("x").cell_hint() is None
+    assert _spec("cell | numeric & raises(MATLAB:x)").param("x").cell_hint() == "cell"
+    # an optional argument that a value makes raise refuses it (it is no parameter's name)
+    with pytest.raises(MatlabCheckError) as err:
+        _spec("logical | cell & raises(MATLAB:x)", optional=True)._bind([mv.Cell([], (0, 0))], {})
+    assert err.value.identifier == "MATLAB:x"
+    for bad in ("!raises(MATLAB:x)", "raises(MATLAB:x) & raises(MATLAB:y)"):
+        with pytest.raises(RegistryError, match="one raises"):
+            accepts_alternatives(bad)
 
 
 def test_a_check_of_the_port_and_its_use():

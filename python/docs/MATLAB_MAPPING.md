@@ -359,7 +359,7 @@ Third-party MATLAB code: an outside-author folder (llsmtools). Its validators ar
 | `xyPixelSize` | `xy_pixel_size` | req |  |  |  |  | Pixel size. |
 | `reverse` | `reverse` | opt |  | `false` | `False` | (third-party: not shown) the port's: `logical` | Reverse scan direction. |
 | `Crop` | `crop` | par |  | `false` | `False` | (third-party: not shown) the port's: `logical` | Crop half of the empty triangles in x. |
-| `Interp` | `interp` | par |  | `'linear'` | `'linear'` | (third-party: not shown) the port's: `in(cubic,linear)` | Interpolation: 'linear' or 'cubic'. |
+| `Interp` | `interp` | par |  | `'linear'` | `'linear'` | (third-party: not shown) the port's: `in(cubic,linear) \| cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)` | Interpolation: 'linear' or 'cubic'. |
 
 ### `deskewPhases_data_wrapper` -> `petakit5d.sim.dataset.deskew_phases_dataset`
 
@@ -977,7 +977,7 @@ Third-party MATLAB code: an outside-author folder (llsmtools). Its validators ar
 | `resample` | `resample` | par | resample_xyz | `[]` | `None` | (third-party: not shown) the port's: `numeric` | Resample factor (z, y, x). |
 | `ObjectiveScan` | `objective_scan` | par |  | `false` | `False` | (third-party: not shown) the port's: `logical` | Turns Crop off (otherwise changes nothing, as in MATLAB). |
 | `outSize` | `out_size` | par | size_yxz | `[]` | `None` | (third-party: not shown) the port's: `numeric` | Output size (nz, ny, nx) before resampling. |
-| `Interp` | `interp` | par |  | `'linear'` | `'linear'` | (third-party: not shown) the port's: `in(cubic,linear)` | Interpolation: 'linear' or 'cubic'. |
+| `Interp` | `interp` | par |  | `'linear'` | `'linear'` | (third-party: not shown) the port's: `in(cubic,linear) \| cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)` | Interpolation: 'linear' or 'cubic'. |
 
 ### `runLifetimeAnalysis3D` -> `petakit5d.detection.lifetime.run_lifetime_analysis`
 
@@ -990,8 +990,8 @@ Third-party MATLAB code: its header names an outside author (cmeAnalysis). Its v
 | `data` | `data` | req | same |  |  | (third-party: not shown) | Movies (the structure XR_loadConditionData3D returns). |
 | `lb` | `lb` | opt | same | `[1,11,16,21,41,61]` | `(1, 11, 16, 21, 41, 61)` |  | Lower lifetime bounds of the threshold's cohorts, s. |
 | `ub` | `ub` | opt | same | `[10,15,20,40,60,120]` | `(10, 15, 20, 40, 60, 120)` |  | Upper lifetime bounds of the threshold's cohorts, s. |
-| `Display` | `display` | par |  | `'on'` | `'on'` | (third-party: not shown) the port's: `in(off,on) \| cell & !numel(1)` | Figures, 'on' or 'off' (the port makes none). |
-| `DisplayMode` | `display_mode` | par |  | `'screen'` | `'screen'` | (third-party: not shown) the port's: `in(print,screen)` | Figures' mode (the default only). |
+| `Display` | `display` | par |  | `'on'` | `'on'` | (third-party: not shown) the port's: `in(off,on) \| cell & !numel(1) & raises(MATLAB:strcmp:InputsSizeMismatch)` | Figures, 'on' or 'off' (the port makes none). |
+| `DisplayMode` | `display_mode` | par |  | `'screen'` | `'screen'` | (third-party: not shown) the port's: `in(print,screen) \| cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)` | Figures' mode (the default only). |
 | `AnalysisPath` | `analysis_path` | par |  | `'Analysis'` | `'Analysis'` | (third-party: not shown) the port's: `char` | Analysis folder in each movie's source folder. |
 | `ProcessedTracks` | `processed_tracks` | par |  | `'ProcessedTracks.mat'` | `'ProcessedTracks.mat'` | (third-party: not shown) the port's: `char` | Track file in the analysis folder. |
 | `LifetimeData` | `lifetime_data` | par |  | `'lifetimeData.mat'` | `'lifetimeData.mat'` | (third-party: not shown) the port's: `char` | Lifetime data file in the analysis folder. |
@@ -1015,10 +1015,10 @@ Third-party MATLAB code: its header names an outside author (cmeAnalysis). Its v
 | `SlaveNames` | `slave_names` | par |  | `[]` | `None` |  | Not ported: [] only. |
 | `Colormap` | `colormap` | par |  | `jet(numel(data))` | `None` |  | Figures' colors (the default only). |
 | `CorrectObservationBias` | `correct_observation_bias` | par |  | `true` | `True` | (third-party: not shown) the port's: `logical` | Not ported: true only. |
-| `InitDensity` | `init_density` | par |  | `'mean'` | `'mean'` | (third-party: not shown) the port's: `in(mean,median)` | Not ported: the default only. |
+| `InitDensity` | `init_density` | par |  | `'mean'` | `'mean'` | (third-party: not shown) the port's: `in(mean,median) \| cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)` | Not ported: the default only. |
 | `AmplitudeCorrection` | `amplitude_correction` | par |  | `[]` | `None` |  | Not ported: [] only. |
 | `MaskPath` | `mask_path` | par |  | `['Detection' filesep 'cellmask.tif']` | `None` | (third-party: not shown) the port's: `char` | Cell mask in each movie's source folder (not ported: none may exist there). |
-| `Binning` | `binning` | par |  | `1` | `1` | (third-party: not shown) the port's: `numeric & scalar & positive-whole \| cell \| struct \| string \| handle` | Not ported: the default only. |
+| `Binning` | `binning` | par |  | `1` | `1` | (third-party: not shown) the port's: `numeric & scalar & positive-whole \| string & raises(MATLAB:string:ComparisonNotDefined) \| cell & raises(MATLAB:UndefinedFunction) \| struct & raises(MATLAB:UndefinedFunction) \| handle & raises(MATLAB:UndefinedFunction)` | Not ported: the default only. |
 
 ### `saveMIP_tiff` -> `petakit5d.tools.mip.save_mip_tiff`
 
@@ -2245,7 +2245,7 @@ Third-party MATLAB code: its header names an outside author (cmeAnalysis), with 
 | `condDir` | `cond_dir` | opt |  | `[]` | `None` | (third-party: not shown) the port's: `char & !in(FrameRate,MovieSelector)` | The condition folder (its movie folders), or one movie's folder. |
 | `chNames` | `ch_names` | opt |  | `{}` | `()` |  | The channel folders' names, the master channel first. |
 | `markers` | `markers` | opt |  | `{}` | `()` |  | The channels' fluorescent markers (getFluorPropStruct's names). |
-| `maxlevel` | `maxlevel` | opt |  | `3` | `3` | (third-party: not shown) the port's: `empty \| numeric & !scalar \| numeric & nonnegative-whole` | Folder levels below condDir searched for movies. |
+| `maxlevel` | `maxlevel` | opt |  | `3` | `3` | (third-party: not shown) the port's: `empty \| numeric & nonnegative-whole \| numeric & !scalar & !empty & raises(MATLAB:nonLogicalConditional)` | Folder levels below condDir searched for movies. |
 | `MovieSelector` | `movie_selector` | par |  | `'Ex'` | `'Ex'` | (third-party: not shown) the port's: `char` | Text in a movie folder's name. |
 | `IgnoreExpNumber` | `ignore_exp_number` | par |  | `false` | `False` | (third-party: not shown) the port's: `logical` | Order the movies by name, not by their number. |
 | `ChannelPatterns` | `channel_patterns` | par |  | `{}` | `()` | (third-party: not shown) the port's: `cell` | Channel patterns (no effect: measured). |
@@ -2956,7 +2956,7 @@ Third-party MATLAB code: its header names an outside author (cmeAnalysis). Its v
 | `TrackerOutput` | `tracker_output` | par |  | `'trackedFeatures.mat'` | `'trackedFeatures.mat'` | (third-party: not shown) the port's: `char` | Tracker result file in the results folder. |
 | `FileName` | `file_name` | par |  | `'ProcessedTracks.mat'` | `'ProcessedTracks.mat'` | (third-party: not shown) the port's: `char` | Result file name. |
 | `DetectionFile` | `detection_file` | par |  | `'Detection3D.mat'` | `'Detection3D.mat'` | (third-party: not shown) the port's: `char` | Detection file name in the results folder. |
-| `Frames` | `frames` | par | index1 | `arrayfun(@(x) 1:x.movieLength, data, 'unif', 0)` | `None` | (third-party: not shown) the port's: `cell \| struct \| string \| handle \| evenly-spaced` | Frames (0-based; default all; all only). |
+| `Frames` | `frames` | par | index1 | `arrayfun(@(x) 1:x.movieLength, data, 'unif', 0)` | `None` | (third-party: not shown) the port's: `evenly-spaced \| cell & raises(MATLAB:UndefinedFunction) \| struct & raises(MATLAB:UndefinedFunction) \| string & raises(MATLAB:UndefinedFunction) \| handle & raises(MATLAB:UndefinedFunction)` | Frames (0-based; default all; all only). |
 | `Preprocess` | `preprocess` | par |  | `true` | `True` | (third-party: not shown) the port's: `logical` | Preprocessing (true only). |
 | `Postprocess` | `postprocess` | par |  | `true` | `True` | (third-party: not shown) the port's: `logical` | Postprocessing (true only). |
 | `WindowSize` | `window_size` | par | same | `[]` | `None` |  | Fit window size (default only). |

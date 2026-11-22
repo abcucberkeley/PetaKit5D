@@ -810,7 +810,7 @@ _UB = (10, 15, 20, 40, 60, 120)
     "runLifetimeAnalysis3D",
     # third-party code (its header names an outside author): its interface, with the port's own
     # checks (accepts=) made from MATLAB's behaviour (tests/params/test_third_party_checks.py:
-    # an error of a check's own, not inputParser's, counts as taken, e.g. Display's cells of
+    # raises(...) where MATLAB's check raises an error of its own, e.g. for Display's cells of
     # other than one element); the options the port takes at their defaults only raise
     # NotImplementedError otherwise
     Param("data", None, "Movies (the structure XR_loadConditionData3D returns).", convert="same"),
@@ -820,9 +820,14 @@ _UB = (10, 15, 20, 40, 60, 120)
         "Display",
         None,
         "Figures, 'on' or 'off' (the port makes none).",
-        accepts="in(off,on) | cell & !numel(1)",
+        accepts="in(off,on) | cell & !numel(1) & raises(MATLAB:strcmp:InputsSizeMismatch)",
     ),
-    Param("DisplayMode", None, "Figures' mode (the default only).", accepts="in(print,screen)"),
+    Param(
+        "DisplayMode",
+        None,
+        "Figures' mode (the default only).",
+        accepts="in(print,screen) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
     Param("AnalysisPath", None, "Analysis folder in each movie's source folder.", accepts="char"),
     Param("ProcessedTracks", None, "Track file in the analysis folder.", accepts="char"),
     Param("LifetimeData", None, "Lifetime data file in the analysis folder.", accepts="char"),
@@ -861,7 +866,12 @@ _UB = (10, 15, 20, 40, 60, 120)
         matlab_default="jet(numel(data))",
     ),
     Param("CorrectObservationBias", None, "Not ported: true only.", accepts="logical"),
-    Param("InitDensity", None, "Not ported: the default only.", accepts="in(mean,median)"),
+    Param(
+        "InitDensity",
+        None,
+        "Not ported: the default only.",
+        accepts="in(mean,median) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
     Param("AmplitudeCorrection", None, "Not ported: [] only."),
     Param(
         "MaskPath",
@@ -874,7 +884,13 @@ _UB = (10, 15, 20, 40, 60, 120)
         "Binning",
         None,
         "Not ported: the default only.",
-        accepts="numeric & scalar & positive-whole | cell | struct | string | handle",
+        accepts=(
+            "numeric & scalar & positive-whole"
+            " | string & raises(MATLAB:string:ComparisonNotDefined)"
+            " | cell & raises(MATLAB:UndefinedFunction)"
+            " | struct & raises(MATLAB:UndefinedFunction)"
+            " | handle & raises(MATLAB:UndefinedFunction)"
+        ),
     ),
     task="C05",
 )
