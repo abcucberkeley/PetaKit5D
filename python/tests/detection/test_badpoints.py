@@ -6,7 +6,17 @@ the main peak), and the search's measured rules on designed histograms (no MATLA
 The rules were measured with designed histograms in MATLAB's filter as a black box (mocked
 histogram and peak list, every point given two neighbours so that the keep mask shows the
 removal threshold; no source read): docs/parity/detection.md, the bad-point filter.
+
+The demo cases (task C02d, ``demodata``) give both sides the filter's inputs the port's detector
+makes of three frames of the demo dataset, deskewed as its runner deskews them, whose
+histograms line 104's smoothing choice decides: the second experiment's frame 16 by the spike
+(C02's rule, bin 1 against the median, took medfilt1: 23 points apart), the third's frames 27
+and 40 by the dip (the spike alone took medfilt1: 5 and 3 points apart).
 """
+
+import functools
+import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -170,7 +180,82 @@ def _few_cases():
     return cs
 
 
-CASES = _cases()
+# -- line 104's choice on the demo's frames (task C02d) -------------------------------------------
+DEMO = "$PETAKIT5D_DEMO_DATA/PetaKit5D_point_detection_demo_dataset"
+DEMO_FRAMES = ((2, 16), (3, 27), (3, 40))  # (experiment, frame)
+
+
+@functools.cache
+def demo_filter_inputs(ex: int, k: int) -> dict:
+    """the bad-point filter's inputs on frame k of experiment ex of the demo dataset as the port's
+    detector makes them: the first channel's frame deskewed as the multiple demo's runner does
+    it, the detector's sigmas from the first channel's bead image, the runner's options and its
+    residual threshold; MATLAB's form, positions 1-based"""
+    from petakit5d.deskew_rotate.volume import deskew_volume
+    from petakit5d.detection import detect, run
+    from petakit5d.detection.condition import load_condition_data
+    from petakit5d.detection.sigma import estimate_sigma3d
+    from petakit5d.io import read_tiff
+
+    root = Path(os.path.expandvars(DEMO))
+    cond = sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith("."))[0]
+    movies = load_condition_data(str(cond) + os.sep, ["ch1", "ch2"], ["gfp", "rfp"])
+    m = movies[ex - 1]
+    raw = np.asarray(read_tiff(m.frame_paths[0][k - 1]), dtype=np.float64)
+    ds = deskew_volume(raw, 31.5, float(m.dz), float(m.pixel_size), False, crop=False)
+    sxy, sz = estimate_sigma3d(str(cond / "560totalPSF.tif"))[:2]
+    sigma = run.runner_sigma([[sxy, sz / float(movies[0].z_aniso)]])[0]
+    seen = {}
+    orig = BP.filter_bad_points
+
+    def spy(*a):
+        seen["args"] = a
+        return orig(*a)
+
+    detect.clear_threshold_cache()
+    BP.filter_bad_points = spy
+    try:
+        run.detect_frame([ds.astype(np.float32)], k, np.array([sigma]), float(m.z_aniso))
+    finally:
+        BP.filter_bad_points = orig
+    P, sr, thr, bg, _vol, A, c = seen["args"]
+    return {
+        "P": np.asarray(P, dtype=np.float64),
+        "sr": np.asarray(sr, dtype=np.float64).reshape(1, -1),
+        "thr": float(thr),
+        "bg": np.asarray(bg, dtype=np.float64).reshape(1, -1),
+        "A": np.asarray(A, dtype=np.float64).reshape(1, -1),
+        "c": np.asarray(c, dtype=np.float64).reshape(1, -1),
+    }
+
+
+def _py_filter_demo(P, sr, thr, bg, vol, A, c):
+    return _py_filter(P, sr, float(np.ravel(thr)[0]), bg, vol, A, c)
+
+
+def _demo_cases():
+    cs = []
+    vol = synth.CounterRNG(2026, "C02c.badpoints.vol").uniform((9, 8, 7)) * 10 + 100
+    for ex, k in DEMO_FRAMES:
+        vals = {
+            n: Value(lambda n=n, ex=ex, k=k: demo_filter_inputs(ex, k)[n])
+            for n in ("P", "sr", "thr", "bg", "A", "c")
+        }
+        vals["vol"] = Value(lambda: vol)
+        cs.append(
+            Case(
+                f"demo.smoothing.ex{ex}_frame{k}",
+                matlab="filter_bad_points_in_detection",
+                args=[In("P"), In("sr"), In("thr"), In("bg"), In("vol"), In("A"), In("c")],
+                python=_py_filter_demo,
+                inputs=vals,
+                marks=("demodata",),
+            )
+        )
+    return cs
+
+
+CASES = _cases() + _demo_cases()
 
 
 @oracle.parametrize(CASES)
@@ -469,3 +554,60 @@ def test_line_160s_bound_in_the_decision():
         e = E - E[0] + centre - 0.445 / 2
         path, _, info = BP.decide({"cnt": c, "e": e, "lst": [1, 6, 14, 39]}, 3.0, 2.65, 1.5)
         assert (path == "C") == want and abs(info["sig_bp"] - centre) < 1e-9, centre
+
+
+def test_the_smoothing_takes_conv_for_a_spike_in_the_first_bins():
+    """line 104's first reason for conv (task C02d): the largest of the first three bins stands
+    above the median of the list's counts with both its neighbours (0 before the first bin)
+    below 0.75 of it"""
+    # a spike in bin 2 over a low bin 1 (C02's rule, bin 1 against the median, took medfilt1)
+    assert BP.spike([20, 70, 22, 30, 15], 35.5)
+    # the spike at the median: not above it
+    assert not BP.spike([16, 90, 21, 22, 24], 90.0)
+    # bin 1 the largest, bin 2 at 0.8 of it; bin 2 the largest, bin 1 at 0.9 of it
+    assert not BP.spike([50, 40, 29, 18, 8], 46.5)
+    assert not BP.spike([54, 60, 22, 44, 76], 43.5)
+    assert BP.spike([50, 37, 29, 18, 8], 46.5)  # 37 < 0.75 x 50
+    assert not BP.spike([50, 37.5, 29, 18, 8], 46.5)  # 0.75 x 50 itself is not below
+    # a spike in bin 3 over two low bins; a higher bin 4 is not looked at
+    assert BP.spike([7, 2, 152, 14, 32], 13.0)
+    assert not BP.spike([7, 2, 12, 152, 32], 13.0)
+
+
+def test_the_smoothing_choice_follows_the_spike_rule():
+    """smooth_rule's conv is spike's on the list's median: the median of the counts at the
+    list's bins (prepended entries first)"""
+    cnt = np.r_[[20.0, 70, 22, 30, 15, 28, 54, 80, 100, 90, 60, 30, 20, 10, 8], np.ones(45)]
+    # 60 bins: the list's entries below 12 (nb / 5) two apart, so the filter smooths (line 99)
+    lst = [2, 4, 9]  # the median of 70, 30, 100 is 70
+    smooth, conv = BP.smooth_rule(cnt, lst, [], lst, cnt.size)
+    assert smooth and not conv  # 70 is not above the median 70
+    smooth, conv = BP.smooth_rule(cnt, [2, 4, 15], [], [2, 4, 15], cnt.size)
+    assert smooth and conv  # the median of 70, 30, 8 is 30
+
+
+# a designed histogram of 60 bins: bins 1 to 4, the main mass (peaks at bins 8 and 10), a tail
+# with peaks at 26, 35, 39 and 48
+DIP_MAIN = [75, 95, 120, 150, 125, 140, 105, 85, 70, 52, 41, 33, 27, 21, 17, 13]
+DIP_TAIL = [11, 9, 7, 6, 4, 14, 5, 3, 2, 1, 0, 2, 0, 1, 9, 2, 0, 1, 9, 3, 1, 0, 2, 0, 1, 0, 2, 8,
+            1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]  # fmt: skip
+
+
+def test_the_smoothing_takes_conv_for_a_dip_in_the_first_bins():
+    """line 104's second reason for conv (task C02d, the multiple demo's two dense frames that
+    the spike rule misses): medfilt1 raises one of the first three bins by more than the median
+    of the list's counts"""
+    dip = [60.0, 57, 25, 50] + DIP_MAIN + DIP_TAIL  # medfilt1 makes bin 3 50: raised by 25
+    assert BP.dip(dip, 24.9) and not BP.dip(dip, 25.0)
+    assert not BP.spike(dip, 14.0)  # bin 1 the largest, bin 2 at 0.95 of it
+    shallow = [60.0, 57, 45, 50] + DIP_MAIN + DIP_TAIL  # raised by 5
+    assert not BP.dip(shallow, 14.0)
+    # a spike in bin 1: medfilt1 lowers it by 30 and raises bin 3 by 2, which is not a dip
+    spike1 = [60.0, 30, 28, 50] + DIP_MAIN + DIP_TAIL
+    assert not BP.dip(spike1, 14.0) and BP.spike(spike1, 14.0)
+    # through smooth_rule: the list of the found peaks with bin 1 prepended, its median 14
+    locs = [8, 10, 26, 35, 39, 48]
+    lst = [1] + locs
+    assert BP.M.median(np.asarray(dip)[np.array(lst) - 1]) == 14.0
+    assert BP.smooth_rule(dip, lst, [1], locs, 60) == (True, True)
+    assert BP.smooth_rule(shallow, lst, [1], locs, 60) == (True, False)
