@@ -519,8 +519,8 @@ K_LEVEL = 1.959963984540054  # norminv(0.975, 0, 1), as MATLAB returns it (main:
 
 def fit_windows(wins, p0, corner, sigma, *, num_threads: int | None = None) -> dict:
     """interpTrack's read-out of each window: the free fit (``XR_fitGaussian3D``, mode
-    'xyzAc'), kept when its position is within 2 voxels of the window's centre in x, y and z,
-    else the fit of amplitude and background at the given position (the ``fitGaussian3D`` mex,
+    'xyzAc'), kept when its position is less than 2 voxels from the window's centre in x, y and
+    z, else the fit of amplitude and background at the given position (the ``fitGaussian3D`` mex,
     mode 'Ac'); then the fields ``FIT_FIELDS`` (positions 1-based, z as the frame has it) and
     the amplitude's one-sided Welch test against kLevel residual sigmas (measured)"""
     from petakit5d.detection import fit as _fit
@@ -533,7 +533,9 @@ def fit_windows(wins, p0, corner, sigma, *, num_threads: int | None = None) -> d
     wxy, wz = window_half_sizes(sigma)
     R = _fit.fit_cd(wins, p0, num_threads=num_threads)
     ctr = np.array([wxy, wxy, wz], dtype=np.float64)
-    kept = np.all(np.abs(R.prm[:, :3] - ctr) <= 2, axis=1)
+    # MATLAB refits a free fit that ends exactly 2 voxels from the centre (the one such fit of the
+    # multiple demo's 171,926, an end buffer on its window's last valid plane; run.keep_bound)
+    kept = np.all(np.abs(R.prm[:, :3] - ctr) < 2, axis=1)
     prm = R.prm.copy()
     A_pstd = R.pstd[:, 3].copy()
     c_pstd = R.pstd[:, 6].copy()

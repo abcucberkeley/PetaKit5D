@@ -1,6 +1,7 @@
 """``XR_runDetection3D``: detection of every frame of a condition, the other channels read out at
 the master channel's detections, and the results in MATLAB's files (``Detection3D.mat`` with the
-struct array ``frameInfo``, ``Masks/dmask_<k>.tif``, an empty ``Amira/Detection`` folder).
+struct array ``frameInfo``, ``Masks/dmask_<k>.tif``, an empty ``Amira/Detection`` folder, with
+the port's warning that no Amira file is written there: ``AmiraNotWrittenWarning``).
 
 Measured as a black box from traced MATLAB runs and designed-input runs (task C02; no GPL
 source read): bit for bit on 14 real frames when given MATLAB's detector and fit outputs.
@@ -34,6 +35,7 @@ from petakit5d.params import Param, register
 
 __all__ = [
     "FIELD_ORDER",
+    "AmiraNotWrittenWarning",
     "CameraSettingsError",
     "assemble_frame",
     "camera_threshold",
@@ -107,6 +109,29 @@ class CameraSettingsError(RuntimeError):
     def __init__(self, identifier: str, message: str):
         super().__init__(message)
         self.identifier = identifier
+
+
+class AmiraNotWrittenWarning(UserWarning):
+    """The detections' Amira files were asked for and are not written: MATLAB's runners call an
+    Amira writer that PetaKit5D does not include, and warn (without an identifier) when the
+    call fails; the port has no such writer either. ``identifier`` is the port's own."""
+
+    identifier = "petakit5d:detection:amiraNotWritten"
+
+
+def _warn_amira(results_path: str) -> None:
+    """``write_amira``: the port's warning, once per movie, where MATLAB's runners warn"""
+    import warnings
+
+    folder = os.path.join(results_path, "Amira", "Detection")
+    warnings.warn(
+        AmiraNotWrittenWarning(
+            "Amira files of the detections are not written (MATLAB's detection runners call an "
+            f"Amira writer that PetaKit5D does not include, so they write none either); {folder} "
+            "stays empty"
+        ),
+        stacklevel=4,
+    )
 
 
 def _os_listdir(folder: str) -> list[str] | None:
@@ -247,7 +272,10 @@ def runner_camera_threshold(source: str | os.PathLike) -> float:
     the camera search stops with one of MATLAB's errors (no settings file above ``source``, or
     one without a camera line): ``XR_runDetection3D`` goes on without a camera threshold then
     (task C02d, probe r8d), with ``residual_threshold``'s noise. MATLAB's frame-parallel runner
-    stops with the error there instead (its bug of D13, which the port does not reproduce)."""
+    stops with the error there instead, its bug of D13, which the port does not reproduce: the
+    lab's camera search means to give no camera class in both cases (its code returns '' for
+    them, but fails before it), and the lab's threshold function to estimate the threshold from
+    the image without camera information (task C09, probe d13)."""
     from petakit5d.core.dtypes import NAN
 
     try:
@@ -270,7 +298,9 @@ def residual_threshold(noise: float, camera: float) -> float:
     as ``XR_runDetection3D`` has it since the fix of its dropped detections without one;
     MATLAB's frame-parallel runner passes NaN there and so finds nothing, or stops with the
     camera search's error, its bug, which the port does not reproduce (docs/parity/detection.md
-    D13). The values at exactly the bounds are not measured."""
+    D13). A camera threshold of 0 is 0 for every frame, as both of MATLAB's runners pass it on
+    (task C09, probe d13: a stubbed threshold function). The values at exactly the bounds are
+    not measured."""
     noise, camera = float(noise), float(camera)
     if math.isnan(camera):
         return noise
@@ -680,12 +710,13 @@ def run_detection(
     in the result). ``detection_method``: 'speedup' (MATLAB's default) or 'lowSNR'; the ported
     settings are ``window_size`` empty, ``mode`` 'xyzAc' and ``fit_mixtures`` false
     (``max_mixtures`` matters only with mixtures). ``write_amira``: MATLAB's Amira writer fails
-    and writes nothing; an empty ``Amira/Detection`` folder stays. ``frames``: only these frames
-    (1-based; the port's); ``residual_sigma_threshold``: the camera threshold, by default as
-    MATLAB finds it from the settings file above ``source`` (``camera_threshold``: 3 for sCMOS
-    cameras; none, NaN, without such a file: ``runner_camera_threshold``); each frame's
-    detector gets the residual threshold of it and the frame's noise (``residual_threshold``).
-    Returns per movie its ``frameInfo`` entries."""
+    and writes nothing; an empty ``Amira/Detection`` folder stays, and the port warns once per
+    movie (``AmiraNotWrittenWarning``, where MATLAB's runner warns without an identifier).
+    ``frames``: only these frames (1-based; the port's); ``residual_sigma_threshold``: the
+    camera threshold, by default as MATLAB finds it from the settings file above ``source``
+    (``camera_threshold``: 3 for sCMOS cameras; none, NaN, without such a file:
+    ``runner_camera_threshold``); each frame's detector gets the residual threshold of it and
+    the frame's noise (``residual_threshold``). Returns per movie its ``frameInfo`` entries."""
     if sigma is None or np.size(sigma) == 0:
         raise ValueError("run_detection: give sigma (MATLAB asks for it interactively)")
     if mode != "xyzAc":
@@ -777,6 +808,8 @@ def _run_movie(
         write_tiff(dm, os.path.join(masks, dmask_name(k, nframes)))
         entries.append(entry)
     _write_detection3d(results_path + "Detection3D.mat", entries)
+    if write_amira:
+        _warn_amira(results_path)
     return entries
 
 
@@ -1101,6 +1134,7 @@ def _run_movie_frame_parallel(
     )
     if write_amira:
         os.makedirs(os.path.join(results_path, "Amira", "Detection"), exist_ok=True)
+        _warn_amira(results_path)
     if not all(os.path.isfile(p) for p in outputs):
         return None
     entries = [_read_frame_entry(p) for p in outputs]
