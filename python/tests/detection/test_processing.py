@@ -1218,7 +1218,7 @@ def test_stages_take_a_condition(tmp_path):
             synth.write_tiff(rp + "Masks" + os.sep + dmask_name(f, 2), np.zeros(ROT_SIZE, np.uint8))
         run_tracking(form, file_name="trackedFeatures.mat", overwrite=True, results_path=[rp])
         run_track_processing(form, overwrite=True, results_path=[rp])
-        rotate_tracks(form, overwrite=True, results_path=[rp])
+        rotate_tracks(form, overwrite=True, results_path=[rp], crop=False)
     out = {
         name: {
             f: read_mat(str(tmp_path / name / f))
