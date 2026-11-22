@@ -3034,7 +3034,7 @@ Deskew, channel offsets, detection, tracking, track processing and track rotatio
 
 ### `XR_runTracking3D` -> `petakit5d.detection.tracking.run.run_tracking`
 
-``XR_runTracking3D``: track each movie's detections into ``<results>/<file_name>``
+``XR_runTracking3D``: track each movie's detections into ``<results>/<file_name>``. ``data``: the condition (``condition.Condition``, as detection takes it), or MATLAB's struct array as the port holds it (``condition.struct_array``: one movie's dict, a ``StructArray``) or a sequence of the movies' structs.
 
 Third-party MATLAB code: its header names an outside author (cmeAnalysis), with lab edits. Its validators are not shown.
 
@@ -3051,7 +3051,7 @@ Third-party MATLAB code: its header names an outside author (cmeAnalysis), with 
 
 ### `XR_runTrackProcessing3D` -> `petakit5d.detection.processing.run_track_processing`
 
-``XR_runTrackProcessing3D``: each movie's tracks (``<results>/<tracker_output>``) processed with its detections, frames and masks into ``<results>/<file_name>`` and, with ``write_amira``, ``<results>/Amira/Tracking/tracking_t_<k>.am`` (the tracks of categories 1 to 4). The defaults of the options that change the processing are the only ones ported.
+``XR_runTrackProcessing3D``: each movie's tracks (``<results>/<tracker_output>``) processed with its detections, frames and masks into ``<results>/<file_name>`` and, with ``write_amira``, ``<results>/Amira/Tracking/tracking_t_<k>.am`` (the tracks of categories 1 to 4). The defaults of the options that change the processing are the only ones ported. ``data``: the condition (``condition.Condition``, as detection takes it), or MATLAB's struct array as the port holds it (``condition.struct_array``) or a sequence of the movies' structs.
 
 Third-party MATLAB code: its header names an outside author (cmeAnalysis). Its validators are not shown.
 

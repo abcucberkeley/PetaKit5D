@@ -24,7 +24,7 @@ import pytest
 
 from petakit5d.core.dtypes import mround
 from petakit5d.testing import oracle, synth
-from petakit5d.testing.cases import Case, In, InPath, Tree, Value
+from petakit5d.testing.cases import Case, Data, In, InPath, Tree, Value
 from petakit5d.testing.compare import ignore, tol
 from petakit5d.testing.compare import tree as tree_spec
 
@@ -181,7 +181,8 @@ def _render(spec: dict, det, channel: int, f: int) -> np.ndarray:
     sh = (0.0, 0.0, 0.0) if channel == 1 else (0.0, 0.0, 0.0)
     pos = np.stack([D[:, 2] - 1 + sh[2], D[:, 1] - 1 + sh[1], D[:, 0] - 1 + sh[0]], axis=1)
     amp = D[:, 3] * (1.0 if channel == 1 else 0.7)
-    vol = synth.beads(SIZE, pos, (s[1], s[0]), amp, 100.0)
+    bg = float(spec.get("background", {}).get(f + 1, 100.0))  # a frame's own background
+    vol = synth.beads(SIZE, pos, (s[1], s[0]), amp, bg)
     noise = synth.CounterRNG(2026, f"processing/f{f}/ch{channel}").normal(vol.shape)
     v = vol.astype(np.float64) + 5.0 * noise
     t = np.trunc(v)
@@ -458,10 +459,74 @@ def _compound_spec() -> dict:
     return {"tracks": tracks, "ghosts": []}
 
 
-SPECS = {"designed": _spec, "compound": _compound_spec}
+def _buffer_spec() -> dict:
+    """the buffer test's intensity rule (docs/parity/detection.md W14): spots in the farthest
+    buffer frame (not tested for significance) whose amplitude alone and amplitude on its
+    background (``A + c``) compare with the track's maximum the other way round, their frames'
+    background raised or lowered; the same spots on the plain background; and the pool"""
+    cells = [(x, y) for y in range(12, 82, 12) for x in range(12, 102, 12)]
+    tracks, ghosts = [], []
+    for i in range(12):
+        tr = _track(cells[i], 6 + i % 5, [150.0 + 25.0 * i] * (8 + i), jit=1.0, name=f"bpool{i}")
+        tracks.append(tr[0])
+    c = iter(cells[12:])
+    # (first frame, ghost frame, ghost amplitude): the tracks (8 frames, A 300 on 100) are
+    # brighter than their buffer spot alone but not on its background of 130 (frame 9), dimmer
+    # than it alone but not on its background of 70 (frame 24), and both on 100 (frames 13, 28)
+    for f0, fg, a in ((12, 9, 290.0), (14, 24, 315.0), (16, 13, 290.0), (18, 28, 315.0)):
+        tr = _track(next(c), f0, [300.0] * 8, name=f"far{fg}")
+        tracks.append(tr[0])
+        p = tr[0]["segments"][0]["pts"][0 if fg < f0 else -1]
+        ghosts.append([fg, *p[:3], a])
+    return {"tracks": tracks, "ghosts": ghosts, "background": {9: 130.0, 24: 70.0}}
 
 
-@functools.lru_cache(maxsize=2)
+def _late_spec() -> dict:
+    """the first frames without detections (the movie's channels then come from elsewhere than
+    the first frame's detections): tracks from frame 5 on, with gaps, a compound track, and the
+    pool"""
+    cells = [(x, y) for y in range(12, 82, 12) for x in range(12, 102, 12)]
+    tracks = []
+    for i in range(12):
+        tr = _track(cells[i], 6 + i % 5, [150.0 + 25.0 * i] * (8 + i), jit=1.0, name=f"lpool{i}")
+        tracks.append(tr[0])
+    c = iter(cells[12:])
+    ramp = [280.0 + 3.0 * k for k in range(14)]
+    tracks.append(_track(next(c), 5, ramp, gaps=(4,), jit=1.0, name="late_gap1")[0])
+    tracks.append(_track(next(c), 7, ramp, gaps=(6, 7), jit=1.0, name="late_gap2")[0])
+    x, y = next(c)
+    a = [[x, y, 12.3, 300.0] for _ in range(16)]
+    b = [[x + 3.2, y + 0.4, 12.3, 260.0] for _ in range(6)]
+    tracks.append(
+        {
+            "segments": [{"start": 5, "pts": a}, {"start": 9, "pts": b}],
+            "events": [[5, 1, 1, np.nan], [9, 1, 2, 1], [14, 2, 2, np.nan], [20, 2, 1, np.nan]],
+        }
+    )
+    return {"tracks": tracks, "ghosts": []}
+
+
+def _empty_spec() -> dict:
+    """no track left (docs/parity/phase3.md row 9): tracks near a face of the volume in x and in
+    y (the border filter; one over the whole movie, so that every frame has detections) and a
+    single-frame track"""
+    tracks = [_track((5.4, 40.0), 1, [300.0] * NF, name="edge_x")[0]]
+    tracks.append(_track((60.0, 4.6), 8, [300.0] * 9, name="edge_y")[0])
+    tracks.append(_track((104.6, 50.0), 10, [300.0] * 9, name="edge_x2")[0])
+    tracks.append(_track((40.0, 40.0), 12, [260.0], name="one")[0])
+    return {"tracks": tracks, "ghosts": []}
+
+
+SPECS = {
+    "designed": _spec,
+    "compound": _compound_spec,
+    "buffers": _buffer_spec,
+    "empty": _empty_spec,
+    "late": _late_spec,
+}
+
+
+@functools.lru_cache(maxsize=5)
 def _designed(kind: str = "designed"):
     """the spec, its detections per frame and the rendered frames (both channels)"""
     spec = SPECS[kind]()
@@ -493,13 +558,217 @@ def make_condition(folder, kind: str = "designed") -> None:
 
 
 def frame_info(kind: str = "designed"):
+    if kind == "demo_cut":
+        return _cut_frame_info()
     spec, det, vols = _designed(kind)
     return _frame_info(spec, det, [vols[1], vols[2]])
 
 
 def tracks_final(kind: str = "designed"):
+    if kind == "demo_cut":
+        return _cut_tracks_final()
     spec, det, _ = _designed(kind)
     return _tracks_final(spec, det)
+
+
+# -- a cut of the demo data: the buffer test on real tracks (docs/parity/detection.md W14) ------
+
+DEMO = "$PETAKIT5D_DEMO_DATA/PetaKit5D_point_detection_demo_dataset"
+DEMO_TRACKS = "$PETAKIT5D_DEMO_DATA/PetaKit5D_point_detection_demo_tracks"
+CUT_EXPERIMENT = "Ex1_cut_z0p5"
+# a processed track of the demo's first experiment (0-based, a MATLAB run of the
+# multiple-experiments demo) whose buffers the amplitudes and the intensities decide the other
+# way round; in the cut around it (the movie's last 20 frames, 55 tracks) two tracks' are
+CUT_ANCHORS = (2063,)
+CUT_MARGIN = (7, 22)  # frames and voxels around the anchors
+CUT_SIGMA = ((1.375815, 1.104952), (1.610924, 1.329231))  # the demo's PSF sigmas, rounded
+CUT_NZ = 35  # the demo's DS frames' planes
+
+
+def _demo_paths():
+    """the demo's first experiment and its processed tracks, found by their first letters"""
+    from pathlib import Path
+
+    root = Path(os.path.expandvars(DEMO))
+    cond = sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith("."))[0]
+    ex = sorted(p for p in cond.iterdir() if p.is_dir() and p.name.startswith("Ex1"))[0]
+    tr = Path(os.path.expandvars(DEMO_TRACKS))
+    tr = sorted(p for p in tr.iterdir() if p.is_dir() and p.name.startswith("Ex1"))[0]
+    return ex, tr / "ch1" / "Analysis_update_3" / "ProcessedTracks.mat"
+
+
+def _h5_fields(path, fields, idx=None) -> list[dict]:
+    """fields of a v7.3 ProcessedTracks.mat's tracks (all, or those at ``idx``) as MATLAB's
+    arrays, read field by field (reading every field of every track takes about a minute)"""
+    import h5py
+
+    with h5py.File(path, "r") as f:
+        refs = {k: f["tracks"][k][()].ravel() for k in fields}
+        idx = range(refs[fields[0]].size) if idx is None else idx
+        return [{k: np.asarray(f[refs[k][i]][()], dtype=np.float64).T for k in fields} for i in idx]
+
+
+@functools.lru_cache(maxsize=1)
+def _demo_cut():
+    """the cut: the frames and the box (1-based, inclusive) around the anchors, and the demo
+    run's single-segment tracks that lie in them, every detected position of either channel 7
+    voxels or more inside the box in x and y (the border filter keeps them), each with its frames,
+    gap columns and the 17 fields"""
+    from petakit5d.detection.processing import FIELDS17
+
+    src, ptm = _demo_paths()
+    head = _h5_fields(ptm, ("x", "y", "nSeg", "start", "end"))
+    a = [head[i] for i in CUT_ANCHORS]
+    n = len(glob.glob(str(src / "ch1" / "*.tif")))  # the movie's frames
+    f0 = max(int(min(t["start"].item() for t in a)) - CUT_MARGIN[0], 1)
+    f1 = min(int(max(t["end"].item() for t in a)) + CUT_MARGIN[0], n)
+    box = []
+    for k in ("y", "x"):
+        v = np.concatenate([t[k][~np.isnan(t[k])] for t in a])
+        box += [max(int(np.floor(v.min())) - CUT_MARGIN[1], 1),
+                int(np.ceil(v.max())) + CUT_MARGIN[1]]  # fmt: skip
+    y0, y1, x0, x1 = box
+    keep = []
+    for i, t in enumerate(head):
+        if t["nSeg"].item() != 1 or t["start"].item() < f0 or t["end"].item() > f1:
+            continue
+        ok = True
+        for k, lo, hi in (("x", x0, x1), ("y", y0, y1)):
+            v = t[k][~np.isnan(t[k])]
+            ok &= bool(np.all((v >= lo + 7) & (v <= hi - 7)))
+        if ok:
+            keep.append(i)
+    tracks = _h5_fields(ptm, ("f", "gapVect", *FIELDS17), keep)
+    return (f0, f1), (y0, y1, x0, x1), tracks
+
+
+def _cut_detections():
+    """per frame of the cut the detections of its tracks: (track, column) pairs, and per track
+    the feature index of each column (0 at its gaps)"""
+    (f0, f1), _, tracks = _demo_cut()
+    det = [[] for _ in range(f1 - f0 + 1)]
+    feat = []
+    for i, t in enumerate(tracks):
+        idx = []
+        for j, (f, g) in enumerate(zip(t["f"].ravel(), t["gapVect"].ravel(), strict=True)):
+            if g:
+                idx.append(0)
+                continue
+            det[int(f) - f0].append((i, j))
+            idx.append(len(det[int(f) - f0]))
+        feat.append(idx)
+    return det, feat
+
+
+def _cut_value(t, k, j, box):
+    """field k of a track's column j, both channels, in the cut (x and y moved into the box, z
+    back to the frame's orientation: the processed tracks hold nz + 1 - z)"""
+    v = t[k][:, j].copy()
+    if k == "x":
+        v -= box[2] - 1
+    elif k == "y":
+        v -= box[0] - 1
+    elif k == "z":
+        v = (CUT_NZ + 1) - v
+    return v
+
+
+def _cut_frame_info():
+    from petakit5d.detection.processing import FIELDS17
+    from petakit5d.io.matfile import StructArray
+
+    _, box, tracks = _demo_cut()
+    det, _ = _cut_detections()
+    rows = []
+    for D in det:
+        n = len(D)
+        e = {
+            k: np.stack([_cut_value(tracks[i], k, j, box) for i, j in D], axis=1)
+            if n
+            else np.zeros((2, 0))
+            for k in FIELDS17
+        }
+        for k in ("isPSF", "hval_Ar", "hval_AD"):
+            e[k] = e[k].astype(bool)
+        e["s"] = np.array(CUT_SIGMA, dtype=np.float64)
+        for k in ("x", "y", "z"):
+            e[f"{k}_init"] = mround(e[k][0]).reshape(1, n)
+        e["xCoord"] = np.stack([e["x"][0], e["x_pstd"][0]], axis=1)
+        e["yCoord"] = np.stack([e["y"][0], e["y_pstd"][0]], axis=1)
+        e["zCoord"] = np.stack([e["z"][0], e["z_pstd"][0]], axis=1) * Z_ANISO
+        e["amp"] = np.stack([e["A"][0], e["A_pstd"][0]], axis=1)
+        e["dRange"] = [np.array([[0.0, 1.0]]), np.array([[0.0, 1.0]])]
+        if n == 0:
+            for k in FI_FIELDS:
+                if k not in ("s", "dRange"):
+                    e[k] = np.zeros((0, 0))
+        rows.append({k: e[k] for k in FI_FIELDS})
+    return StructArray((1, len(rows)), FI_FIELDS, rows)
+
+
+def _cut_tracks_final():
+    from petakit5d.io.matfile import StructArray
+
+    (f0, _), box, tracks = _demo_cut()
+    _, feat = _cut_detections()
+    out = []
+    for t, idx in zip(tracks, feat, strict=True):
+        n = len(idx)
+        ca = np.full((1, 8 * n), np.nan)
+        for j, d in enumerate(idx):
+            if d:
+                x, y, z, A, dx, dy, dz, dA = (
+                    float(_cut_value(t, k, j, box)[0])
+                    for k in ("x", "y", "z", "A", "x_pstd", "y_pstd", "z_pstd", "A_pstd")
+                )
+                ca[0, 8 * j : 8 * j + 8] = [x, y, z * Z_ANISO, A, dx, dy, dz * Z_ANISO, dA]
+        s = float(t["f"].ravel()[0]) - f0 + 1
+        ev = np.array([[s, 1, 1, np.nan], [s + n - 1, 2, 1, np.nan]], dtype=np.float64)
+        out.append({"tracksFeatIndxCG": np.array([idx], dtype=np.float64), "tracksCoordAmpCG": ca,
+                    "seqOfEvents": ev})  # fmt: skip
+    return StructArray((len(out), 1), ("tracksFeatIndxCG", "tracksCoordAmpCG", "seqOfEvents"), out)
+
+
+def make_demo_cut(folder) -> None:
+    """the cut's condition: the demo's raw frames of the cut's frames deskewed as the demos
+    deskew them (``deskewData``: 31.5 degrees, dz 0.5, 0.104 um pixels, as single), cut to the
+    box (raw and DS frames alike), and masks of the cut's detections"""
+    from pathlib import Path
+
+    from petakit5d.deskew_rotate.volume import deskew_volume
+    from petakit5d.detection.run import dmask_name
+    from petakit5d.io import read_tiff
+
+    (f0, f1), (y0, y1, x0, x1), tracks = _demo_cut()
+    src, _ = _demo_paths()
+    ex = Path(folder) / CUT_EXPERIMENT
+    ana = ex / "ch1" / "Analysis"
+    (ana / "Masks").mkdir(parents=True, exist_ok=True)
+    nf = f1 - f0 + 1
+    for c in (1, 2):
+        raw = sorted(glob.glob(str(src / f"ch{c}" / "*.tif")))
+        (ex / f"ch{c}" / "DS").mkdir(parents=True, exist_ok=True)
+        for k in range(f0, f1 + 1):
+            v = np.asarray(read_tiff(raw[k - 1]), dtype=np.float64)
+            ds = deskew_volume(v, 31.5, 0.5, 0.104, False, crop=False).astype(np.float32)
+            cut = np.ascontiguousarray(ds[:, y0 - 1 : y1, x0 - 1 : x1])
+            assert cut.shape[0] == CUT_NZ
+            for d in (ex / f"ch{c}", ex / f"ch{c}" / "DS"):
+                synth.write_tiff(d / frame_name(c, k - f0 + 1), cut)
+    with open(ex / "probe_Settings.txt", "w", newline="\n") as fh:
+        fh.write('Camera type = "Orca4.0"\n')
+    det, _ = _cut_detections()
+    size = (CUT_NZ, y1 - y0 + 1, x1 - x0 + 1)
+    zz, yy, xx = np.meshgrid(*(np.arange(n) + 1.0 for n in size), indexing="ij")
+    s = CUT_SIGMA[0]
+    for k in range(nf):
+        m = np.zeros(size, dtype=bool)
+        for i, j in det[k]:
+            x, y, z = (float(_cut_value(tracks[i], q, j, (y0, y1, x0, x1))[0]) for q in "xyz")
+            m |= ((xx - x) ** 2 + (yy - y) ** 2) / (2 * s[0]) ** 2 + (zz - z) ** 2 / (
+                2 * s[1]
+            ) ** 2 <= 1
+        synth.write_tiff(ana / "Masks" / dmask_name(k + 1, nf), m.astype(np.uint8) * 255)
 
 
 def _mstruct(sa):
@@ -511,14 +780,14 @@ def _mstruct(sa):
     )
 
 
-def condition_data(cond: str) -> dict:
+def condition_data(cond: str, experiment: str = EXPERIMENT) -> dict:
     """the movie's ``data`` as XR_loadConditionData3D gives it, for the fields processing reads"""
-    ex = os.path.join(str(cond), EXPERIMENT)
+    ex = os.path.join(str(cond), experiment)
     ds = [sorted(glob.glob(os.path.join(ex, f"ch{c}", "DS", "*.tif"))) for c in (1, 2)]
     return {
         "source": os.path.join(ex, "ch1") + os.sep,
         "framerate": FRAME_MS / 1000.0,
-        "movieLength": float(NF),
+        "movieLength": float(len(ds[0])),
         "framePathsDS": [np.array(p, dtype=object).reshape(-1, 1) for p in ds],
         "zAniso": Z_ANISO,
         "angle": 31.5,
@@ -531,7 +800,7 @@ def _py_run(cond, kind: str = "designed"):
     from petakit5d.detection.processing import rotate_tracks, run_track_processing
     from petakit5d.io.matfile import write_mat
 
-    data = condition_data(cond)
+    data = condition_data(cond, CUT_EXPERIMENT if kind == "demo_cut" else EXPERIMENT)
     rp = data["source"] + "Analysis" + os.sep
     write_mat(rp + "Detection3D.mat", {"frameInfo": frame_info(kind)}, version="7.3")
     write_mat(rp + "trackedFeatures.mat", {"tracksFinal": tracks_final(kind)}, version="7")
@@ -553,23 +822,35 @@ TRACKS_TOL = tol(
 )
 
 
-MATLAB_RUN = (
-    CLEAR
-    + "rt = in{1}; ex = [rt '"
-    + EXPERIMENT
-    + "' filesep]; ana = [ex 'ch1' filesep 'Analysis' "
-    "filesep]; frameInfo = in{2}; save([ana 'Detection3D.mat'], 'frameInfo', '-v7.3'); "
-    "tracksFinal = in{3}; save([ana 'trackedFeatures.mat'], 'tracksFinal'); "
-    "data = XR_loadConditionData3D(ex, {'ch1', 'ch2'}, {'gfp', 'rfp'}); "
-    "apath = {[data(1).source 'Analysis' filesep]}; "
-    "XR_runTrackProcessing3D(data, 'Overwrite', true, 'TrackerOutput', 'trackedFeatures.mat', "
-    "'FileName', 'ProcessedTracks.mat', 'Buffer', [3, 3], 'BufferAll', false, 'FitMixtures', "
-    "false, 'WindowSize', [], 'ResultsPath', apath); "
-    "rotateTracks3D(data, 'Overwrite', true, 'Crop', false, 'ResultsPath', apath); out = {};"
-)
+def _matlab_run(experiment: str) -> str:
+    return (
+        CLEAR
+        + "rt = in{1}; ex = [rt '"
+        + experiment
+        + "' filesep]; ana = [ex 'ch1' filesep 'Analysis' "
+        "filesep]; frameInfo = in{2}; save([ana 'Detection3D.mat'], 'frameInfo', '-v7.3'); "
+        "tracksFinal = in{3}; save([ana 'trackedFeatures.mat'], 'tracksFinal'); "
+        "data = XR_loadConditionData3D(ex, {'ch1', 'ch2'}, {'gfp', 'rfp'}); "
+        "apath = {[data(1).source 'Analysis' filesep]}; "
+        "XR_runTrackProcessing3D(data, 'Overwrite', true, 'TrackerOutput', 'trackedFeatures.mat', "
+        "'FileName', 'ProcessedTracks.mat', 'Buffer', [3, 3], 'BufferAll', false, 'FitMixtures', "
+        "false, 'WindowSize', [], 'ResultsPath', apath); "
+        "rotateTracks3D(data, 'Overwrite', true, 'Crop', false, 'ResultsPath', apath); out = {};"
+    )
 
 
-def _case(kind: str) -> Case:
+MATLAB_RUN = _matlab_run(EXPERIMENT)
+
+
+def _case(kind: str, *, exact: bool = False) -> Case:
+    """``exact``: every file compared bit for bit (a condition without fits: decided by the
+    manifest alone too)"""
+    per_file = {}
+    if not exact:
+        per_file["*Tracks.mat"] = TRACKS_TOL
+        # text: the amplitudes of gap frames carry the fits' last bits (W15); the writer itself
+        # is checked byte for byte on MATLAB's tracks (test_amira_on_matlab_tracks)
+        per_file["*.am"] = ignore("docs/parity/detection.md W15: gap frames' values carry W11")
     return Case(
         f"run.{kind}",
         code=MATLAB_RUN,
@@ -584,10 +865,33 @@ def _case(kind: str) -> Case:
         },
         tree=tree_spec(
             ignore=(r"Detection3D\.mat$", r"trackedFeatures\.mat$"),
+            per_file=per_file,
+        ),
+        marks=("slow",),
+    )
+
+
+def _cut_case() -> Case:
+    """the buffer test on real tracks: the demo's frames around the anchors (``_demo_cut``) with
+    the demo run's tracks in them, MATLAB's track processing against the port's"""
+    return Case(
+        "run.demo_cut",
+        code=_matlab_run(CUT_EXPERIMENT),
+        args=[InPath("cond"), In("fi"), In("tf")],
+        nargout=0,
+        python=_py_run,
+        py_args=[InPath("cond"), "demo_cut"],
+        inputs={
+            "frames": Data(DEMO, copy=False),  # the demo's frames, deskewed and cut
+            "tracks": Data(DEMO_TRACKS, copy=False),  # the demo run's tracks in the cut
+            "cond": Tree(make_demo_cut, "cond"),
+            "fi": Value(lambda: _mstruct(frame_info("demo_cut"))),
+            "tf": Value(lambda: _mstruct(tracks_final("demo_cut"))),
+        },
+        tree=tree_spec(
+            ignore=(r"Detection3D\.mat$", r"trackedFeatures\.mat$"),
             per_file={
                 "*Tracks.mat": TRACKS_TOL,
-                # text: the amplitudes of gap frames carry the fits' last bits (W15); the writer
-                # itself is checked byte for byte on MATLAB's tracks (test_amira_on_matlab_tracks)
                 "*.am": ignore("docs/parity/detection.md W15: gap frames' values carry W11"),
             },
         ),
@@ -691,7 +995,14 @@ ROT_REVERSED = Case(
 )
 
 
-RUN_CASES = [_case("designed"), _case("compound")]
+RUN_CASES = [
+    _case("designed"),
+    _case("compound"),
+    _case("buffers"),
+    _case("empty", exact=True),
+    _case("late"),
+    _cut_case(),
+]
 CASES = [*RUN_CASES, ROT_REVERSED]
 
 
@@ -708,15 +1019,25 @@ def test_amira_on_matlab_tracks(case):
     from petakit5d.io.matfile import read_mat
 
     store = oracle.Store.from_env()
-    if store is None or not store.has(case.key()):
+    if store is None:
         pytest.skip(f"needs MATLAB's files of {case.id} (the golden store)")
-    ana = store.case_dir(case.key()) / "files" / "cond" / EXPERIMENT / "ch1" / "Analysis"
+    try:
+        key = case.key()
+    except FileNotFoundError as e:  # the demo data
+        pytest.skip(str(e))
+    if not store.has(key):
+        pytest.skip(f"needs MATLAB's files of {case.id} (the golden store)")
+    cut = case.id == "run.demo_cut"
+    ex, nz = (CUT_EXPERIMENT, CUT_NZ) if cut else (EXPERIMENT, SIZE[0])
+    ana = store.case_dir(key) / "files" / "cond" / ex / "ch1" / "Analysis"
     pt = read_mat(ana / "ProcessedTracks.mat", "tracks")["tracks"]
     pt = [pt] if isinstance(pt, dict) else list(pt)
     keep = [t for t in pt if int(t["catIdx"]) in (1, 2, 3, 4)]
-    for k in range(1, NF + 1):
-        want = (ana / "Amira" / "Tracking" / f"tracking_t_{k:04d}.am").read_bytes().decode()
-        assert amira.frame_text(keep, k, [1.0, 1.0, -Z_ANISO], SIZE[0] * Z_ANISO) == want, k
+    files = sorted((ana / "Amira" / "Tracking").glob("tracking_t_*.am"))
+    assert files and (cut or len(files) == NF)
+    for k, f in enumerate(files, 1):
+        want = f.read_bytes().decode()
+        assert amira.frame_text(keep, k, [1.0, 1.0, -Z_ANISO], nz * Z_ANISO) == want, k
 
 
 def test_amira_write_tracks(tmp_path):
@@ -805,6 +1126,112 @@ def _same(u, v) -> bool:
     return a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
 
 
+def _same_values(u, v) -> bool:
+    """``_same`` through struct arrays, cells and MATLAB objects as ``read_mat`` gives them"""
+    from petakit5d.io.matfile import StructArray
+
+    if isinstance(v, StructArray):
+        return (
+            isinstance(u, StructArray)
+            and u.shape == v.shape
+            and u.fields == v.fields
+            and all(_same_values(a, b) for a, b in zip(u, v, strict=True))
+        )
+    if isinstance(v, dict):
+        return (
+            isinstance(u, dict) and list(u) == list(v) and all(_same_values(u[k], v[k]) for k in v)
+        )
+    if isinstance(v, list | tuple):
+        return (
+            isinstance(u, list | tuple)
+            and len(u) == len(v)
+            and all(_same_values(a, b) for a, b in zip(u, v, strict=True))
+        )
+    if isinstance(v, np.ndarray) and v.dtype == object:
+        return (
+            isinstance(u, np.ndarray)
+            and u.shape == v.shape
+            and all(_same_values(a, b) for a, b in zip(u.ravel(), v.ravel(), strict=True))
+        )
+    if not isinstance(v, np.ndarray | np.generic | int | float | bool | str):
+        return type(u) is type(v) and vars(u).keys() == vars(v).keys()
+    return _same(u, v)
+
+
+def test_stage_movies_forms():
+    """the movies the stages read from each form of ``data`` (the registered stages get a
+    ``Condition`` as a tuple of its movies, from the parameter layer; the rotation as it is)"""
+    from petakit5d.detection import processing
+    from petakit5d.detection.condition import Condition, Movie
+    from petakit5d.detection.tracking import run as tracking_run
+    from petakit5d.io.matfile import StructArray
+
+    movies = [
+        Movie(source=f"/data/ex{k}/ch1/", channels=[f"/data/ex{k}/ch1/"], date=None,
+              framerate=2.0, image_size=(4, 5, 6), movie_length=3, markers=["gfp"],
+              frame_paths=[["a.tif"]], mask_paths=[], na=None, m=None, pixel_size=0.104)
+        for k in (1, 2)
+    ]  # fmt: skip
+    dicts = [m.to_matlab() for m in movies]
+    want = ["/data/ex1/ch1/", "/data/ex2/ch1/"]
+    for f in (processing._movies, tracking_run._movies):
+        for data, n in (
+            (Condition(movies), 2),
+            (tuple(movies), 2),
+            (movies[0], 1),
+            (dicts[0], 1),
+            (StructArray((1, 2), list(dicts[0]), dicts), 2),
+            (dicts, 2),
+        ):
+            got = f(data)
+            assert all(isinstance(d, dict) for d in got)
+            assert [d["source"] for d in got] == want[:n], (f.__module__, type(data))
+
+
+def test_stages_take_a_condition(tmp_path):
+    """the tracking, the track processing and the rotation take the condition as detection takes
+    it (``condition.Condition``, from ``load_condition_data``), and one of its movies, besides
+    MATLAB's struct array of it (``condition.struct_array``): the same files from each (a
+    two-frame movie: three detections per frame, linked into tracks over the movie)"""
+    from petakit5d.detection import load_condition_data
+    from petakit5d.detection.condition import Condition, Movie, struct_array
+    from petakit5d.detection.processing import rotate_tracks, run_track_processing
+    from petakit5d.detection.run import dmask_name
+    from petakit5d.detection.tracking import run_tracking
+    from petakit5d.io.matfile import read_mat, write_mat
+
+    make_rot_condition(tmp_path / "cond")
+    data = load_condition_data(str(tmp_path / "cond" / EXPERIMENT), ["ch1", "ch2"], ["gfp", "rfp"])
+    assert isinstance(data, Condition) and isinstance(data[0], Movie)
+    det = [
+        [[12.2, 10.4, 8.3, 300.0], [30.6, 20.1, 8.6, 250.0], [44.3, 27.8, 9.1, 280.0]],
+        [[12.5, 10.6, 8.4, 290.0], [30.9, 20.4, 8.5, 260.0], [44.1, 27.5, 9.0, 270.0]],
+    ]
+    vol = np.full(ROT_SIZE, 100, dtype=np.uint16)
+    fi = _frame_info({"tracks": []}, det, [[vol, vol], [vol, vol]])
+    forms = {"condition": data, "movie": data[0], "struct": struct_array(data)}
+    for name, form in forms.items():
+        rp = str(tmp_path / name) + os.sep
+        os.makedirs(rp + "Masks")
+        write_mat(rp + "Detection3D.mat", {"frameInfo": fi}, version="7.3")
+        for f in (1, 2):
+            synth.write_tiff(rp + "Masks" + os.sep + dmask_name(f, 2), np.zeros(ROT_SIZE, np.uint8))
+        run_tracking(form, file_name="trackedFeatures.mat", overwrite=True, results_path=[rp])
+        run_track_processing(form, overwrite=True, results_path=[rp])
+        rotate_tracks(form, overwrite=True, results_path=[rp])
+    out = {
+        name: {
+            f: read_mat(str(tmp_path / name / f))
+            for f in ("trackedFeatures.mat", "ProcessedTracks.mat", "RotatedTracks.mat")
+        }
+        for name in forms
+    }
+    assert len(out["struct"]["ProcessedTracks.mat"]["tracks"]) == 3
+    for name in ("condition", "movie"):
+        for f, v in out["struct"].items():
+            assert _same_values(out[name][f], v), (name, f)
+
+
 @pytest.mark.parametrize("reversed_", [False, True])
 @pytest.mark.parametrize("n", [0, 1, 2, 3])
 def test_rotated_tracks_file(tmp_path, n, reversed_):
@@ -838,7 +1265,7 @@ def test_rotated_tracks_file(tmp_path, n, reversed_):
     st = (
         StructArray((1, n), tuple(rows[0]), rows)
         if n
-        else StructArray.empty(P.TRACK_FIELDS, (1, 0))
+        else StructArray.empty(P.EMPTY_FIELDS, (0, 0))  # MATLAB's file without tracks
     )
     write_mat(rp + "ProcessedTracks.mat", {"tracks": st, "processingInfo": {"procFlag": 1.0}})
     data = {
@@ -862,8 +1289,8 @@ def test_rotated_tracks_file(tmp_path, n, reversed_):
     assert all(_same(g, w) for g, w in zip(got, want, strict=True))
     if n:
         assert "Y" in got[0]["endBuffer"] and "Y" not in got[0]["startBuffer"]
-    else:  # no tracks: an empty struct array of the processing's fields
-        assert out["tracks"].shape == (1, 0) and out["tracks"].fields == P.TRACK_FIELDS
+    else:  # no tracks: the empty struct array as read (MATLAB's 0 x 0 of its fields)
+        assert out["tracks"].shape == (0, 0) and out["tracks"].fields == P.EMPTY_FIELDS
 
 
 REV_BLOBS = ((20, 6, 6), (30, 12, 9), (40, 18, 12), (26, 24, 15), (36, 30, 18), (46, 36, 20))
@@ -1164,6 +1591,61 @@ def test_dense_gaps():
     assert not P._dense_gaps(np.array([0, 1, 1, 0, 0], bool))
     assert P._dense_gaps(np.array([0, 1, 1, 0, 1, 1, 0, 0], bool))
     assert not P._dense_gaps(np.array([0, 1, 1, 0, 1, 0, 0, 0], bool))
+
+
+def test_buffer_test_reads_intensities():
+    """channel 1's buffers are bad with significance in the two frames nearest the track, or a
+    buffer frame whose intensity A + c exceeds the track's largest A + c over all its columns
+    (the gap frames' fits too), whatever the amplitudes alone (docs/parity/detection.md W14)"""
+    from petakit5d.detection.processing import _buffers_bad
+
+    def tr(sa=(0, 0, 0), sc=(100, 100, 100), ea=(0, 0, 0), ec=(100, 100, 100), sp=(1, 1, 1),
+           ep=(1, 1, 1)):  # fmt: skip
+        def buf(a, c, p):
+            return {
+                "A": np.array([a, [50, 50, 50]], float),
+                "c": np.array([c, [100, 100, 100]], float),
+                "pval_Ar": np.array([p, [0, 0, 0]], float),
+            }
+
+        # channel 1: A + c 400, 402 (the second column, say a gap frame's fit) and 370, so the
+        # largest 402, where the largest A plus the largest c is 412 and channel 1's A on
+        # channel 2's c at most 400; channel 2 bright and significant, which the test does not read
+        return {
+            "A": np.array([[300.0, 290.0, 260.0], [900.0, 900.0, 900.0]]),
+            "c": np.array([[100.0, 112.0, 110.0], [100.0, 100.0, 100.0]]),
+            "startBuffer": buf(sa, sc, sp),
+            "endBuffer": buf(ea, ec, ep),
+        }
+
+    assert not _buffers_bad(tr())
+    assert not _buffers_bad(tr(sa=(290, 0, 0)))  # 390 < 402
+    assert _buffers_bad(tr(sa=(290, 0, 0), sc=(113, 100, 100)))  # 403 > 402, A 290 < 300
+    assert not _buffers_bad(tr(ea=(0, 0, 305), ec=(100, 100, 90)))  # 395 < 402, A 305 > 300
+    assert _buffers_bad(tr(ea=(0, 0, 305)))  # 405 > 402 (not above the 412)
+    assert not _buffers_bad(tr(ea=(0, 0, 301)))  # 401 < 402 (above the 400)
+    assert _buffers_bad(tr(sp=(1, 0.01, 1))) and _buffers_bad(tr(ep=(1, 0.01, 1)))
+    assert not _buffers_bad(tr(sp=(0.01, 1, 1), ep=(1, 1, 0.01)))  # the farthest frames
+    t = tr(ea=(0, 0, 301))
+    t["A"][0, 1] = 280.0  # the largest A + c now the first column's 400
+    assert _buffers_bad(t)
+
+
+def test_empty_processed_tracks_file(tmp_path):
+    """without tracks MATLAB's ProcessedTracks.mat holds a 0 x 0 struct array of its fields but
+    the three significance fields, and processingInfo (case run.empty)"""
+    from petakit5d.detection import processing as P
+    from petakit5d.io.matfile import StructArray, read_mat
+
+    path = str(tmp_path / "ProcessedTracks.mat")
+    P.write_processed_tracks(path, [])
+    out = read_mat(path)
+    assert sorted(out) == ["processingInfo", "tracks"]
+    st = out["tracks"]
+    assert isinstance(st, StructArray) and st.shape == (0, 0)
+    assert st.fields == P.EMPTY_FIELDS == P.TRACK_FIELDS[:-3]
+    assert "significantMaster" not in st.fields
+    assert np.asarray(out["processingInfo"]["procFlag"]).tolist() == [[True, True]]
 
 
 def test_rotation_matrix_and_points():

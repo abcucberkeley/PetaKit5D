@@ -19,9 +19,16 @@ __all__ = ["run_tracking", "track_detections", "write_tracked_features"]
 
 
 def _movies(data) -> list[dict]:
-    if isinstance(data, dict):
-        return [data]
-    return [dict(d) for d in data]
+    """the movies as MATLAB's structs (dicts): a ``condition.Condition`` or one of its movies
+    (``condition.Movie``), MATLAB's struct array as the port holds it (one movie's dict, a
+    ``StructArray``), or a sequence of dicts or movies"""
+    from collections.abc import Mapping
+
+    if isinstance(data, Mapping):
+        return [dict(data)]
+    if hasattr(data, "to_matlab") and not isinstance(data, list | tuple):
+        return [dict(data.to_matlab())]  # one movie
+    return [dict(d.to_matlab()) if hasattr(d, "to_matlab") else dict(d) for d in data]
 
 
 def track_detections(frame_info, settings: dict | None = None) -> tuple[list[dict], list[dict]]:
@@ -122,7 +129,10 @@ def run_tracking(
     results_path=None,
     parallel_method: str = "lock_distributed",
 ) -> None:
-    """``XR_runTracking3D``: track each movie's detections into ``<results>/<file_name>``"""
+    """``XR_runTracking3D``: track each movie's detections into ``<results>/<file_name>``.
+    ``data``: the condition (``condition.Condition``, as detection takes it), or MATLAB's struct
+    array as the port holds it (``condition.struct_array``: one movie's dict, a ``StructArray``)
+    or a sequence of the movies' structs."""
     from petakit5d.io.matfile import read_mat
 
     del parallel_method

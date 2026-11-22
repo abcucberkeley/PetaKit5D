@@ -35,6 +35,7 @@ from petakit5d.matlabcompat.interp import interp1
 from petakit5d.params import Param, register
 
 __all__ = [
+    "EMPTY_FIELDS",
     "FIELDS17",
     "TRACK_FIELDS",
     "convert_tracks",
@@ -106,6 +107,9 @@ TRACK_FIELDS = (
     "significantVsBackground",
     "significantSlave",
 )
+# the fields of MATLAB's processed tracks when there are none, a 0 x 0 struct array: all but the
+# three significance fields (measured, case run.empty of tests/detection/test_processing.py)
+EMPTY_FIELDS = TRACK_FIELDS[:-3]
 
 
 def _mat2(a) -> np.ndarray:
@@ -284,12 +288,23 @@ def _remove_short_segments(t: _Raw) -> None:
 # -- conversion -----------------------------------------------------------------------------------
 
 
+def _channels(frame_info) -> int:
+    """the channels of the detections: the rows of the first frame with detections (the first
+    frames may have none; MATLAB's tracks have every channel's row then too: case run.late),
+    else of its sigmas"""
+    for fi in frame_info:
+        x = _mat2(fi["x"])
+        if x.size:
+            return x.shape[0]
+    return _mat2(frame_info[0]["s"]).shape[0] if len(frame_info) else 1
+
+
 def convert_tracks(tracks_final, frame_info, framerate: float) -> list[dict]:
     """the tracker's tracks as MATLAB's processed tracks before the fits: single-frame tracks
     dropped, compound tracks decoupled, the detections' 17 fields per frame (z as the
     detections have it; ``reverse_z`` turns it at the end), frames, times, gaps, events, span
     and lifetime"""
-    nch = _mat2(frame_info[0]["x"]).shape[0] if len(frame_info) else 1
+    nch = _channels(frame_info)
     out = []
     for t in raw_tracks(tracks_final):
         if t.F.shape[1] == 1:
@@ -738,17 +753,19 @@ def gap_status(tr: dict, runs: list[np.ndarray]) -> np.ndarray:
 
 def _buffers_bad(tr: dict, alpha: float = 0.05) -> bool:
     """channel 1's buffers: significant signal in the two frames nearest the track, or a buffer
-    frame brighter than the track's maximum (measured: all but 2 of the demo's 2,171 single
-    visibility-1 tracks, docs/parity/detection.md)"""
+    frame whose intensity (``A + c``, the amplitude on its background) exceeds the track's
+    largest intensity over all its columns, the gap frames' fits included (measured on the
+    multiple demo's three experiments: with it all 15,382 categories are MATLAB's, with the
+    amplitudes alone 34 differ; docs/parity/detection.md W14)"""
     b, e = tr["startBuffer"], tr["endBuffer"]
     sp, ep = b["pval_Ar"][0], e["pval_Ar"][0]
     with np.errstate(invalid="ignore"):
-        m = np.nanmax(tr["A"][0])
+        m = np.nanmax(tr["A"][0] + tr["c"][0])
         return bool(
             np.any(sp[1:] < alpha)
             or np.any(ep[:2] < alpha)
-            or np.any(b["A"][0] > m)
-            or np.any(e["A"][0] > m)
+            or np.any(b["A"][0] + b["c"][0] > m)
+            or np.any(e["A"][0] + e["c"][0] > m)
         )
 
 
@@ -1060,14 +1077,15 @@ def matlab_track(tr: dict) -> dict:
 
 def write_processed_tracks(path: str, tracks: list[dict], proc_flag=(True, True)) -> None:
     """``ProcessedTracks.mat`` as MATLAB saves it (v7.3): ``tracks`` (1 x N struct array) and
-    ``processingInfo.procFlag`` (logical 1 x 2)"""
+    ``processingInfo.procFlag`` (logical 1 x 2); without tracks a 0 x 0 struct array of the
+    fields ``EMPTY_FIELDS`` (measured: case ``run.empty``)"""
     from petakit5d.io.matfile import StructArray, write_mat
 
     rows = [matlab_track(t) for t in tracks]
     st = (
         StructArray((1, len(rows)), TRACK_FIELDS, rows)
         if rows
-        else StructArray.empty(TRACK_FIELDS, (1, 0))
+        else StructArray.empty(EMPTY_FIELDS, (0, 0))
     )
     info = {"procFlag": np.array([[bool(proc_flag[0]), bool(proc_flag[1])]])}
     write_mat(path, {"tracks": st, "processingInfo": info}, version="7.3")
@@ -1108,9 +1126,16 @@ def _channel_paths(v) -> list[list[str]]:
 
 
 def _movies(data) -> list[dict]:
-    if isinstance(data, dict):
-        return [data]
-    return [dict(d) for d in data]
+    """the movies as MATLAB's structs (dicts): a ``condition.Condition`` or one of its movies
+    (``condition.Movie``), MATLAB's struct array as the port holds it (one movie's dict, a
+    ``StructArray``: its elements in MATLAB's linear order), or a sequence of dicts or movies"""
+    from collections.abc import Mapping
+
+    if isinstance(data, Mapping):
+        return [dict(data)]
+    if hasattr(data, "to_matlab") and not isinstance(data, list | tuple):
+        return [dict(data.to_matlab())]  # one movie
+    return [dict(d.to_matlab()) if hasattr(d, "to_matlab") else dict(d) for d in data]
 
 
 def _default_results(movies) -> list[str]:
@@ -1206,7 +1231,10 @@ def run_track_processing(
     """``XR_runTrackProcessing3D``: each movie's tracks (``<results>/<tracker_output>``) processed
     with its detections, frames and masks into ``<results>/<file_name>`` and, with
     ``write_amira``, ``<results>/Amira/Tracking/tracking_t_<k>.am`` (the tracks of categories 1
-    to 4). The defaults of the options that change the processing are the only ones ported."""
+    to 4). The defaults of the options that change the processing are the only ones ported.
+    ``data``: the condition (``condition.Condition``, as detection takes it), or MATLAB's struct
+    array as the port holds it (``condition.struct_array``) or a sequence of the movies'
+    structs."""
     from petakit5d.detection import amira
     from petakit5d.detection.run import dmask_name
     from petakit5d.io import read_tiff
@@ -1343,7 +1371,7 @@ def rotate_tracks(
     ``tracks``) from ``<results>/ProcessedTracks.mat``, the geometry from the first DS frame of
     channel 1 and the movie's ``angle`` and ``zAniso`` (stage scans: measured). A v7.3 file of
     two or more tracks is rotated in a copy (``_rotate_v73``), any other file through
-    ``rotated_tracks``.
+    ``rotated_tracks``. ``data`` as ``run_track_processing`` takes it (a ``Condition`` too).
 
     A reversed scan (the movie's ``reversed``), deskewed in its direction as the port deskews
     it (W2), is rotated by the mirrored angle (``rotation_matrix``), which puts its tracks
@@ -1379,15 +1407,15 @@ def rotate_tracks(
         if mat_version(src) == "7.3" and _has_tracks_struct(src):
             _rotate_v73(src, tmp, rotation_matrix(size, angle, za, mirrored=mirrored))
         else:
-            pt = read_mat(src, "tracks")["tracks"]
-            pt = [pt] if isinstance(pt, dict) else list(pt)
+            st0 = read_mat(src, "tracks")["tracks"]
+            pt = [st0] if isinstance(st0, dict) else list(st0)
             rows = rotated_tracks(pt, size, angle, za, mirrored=mirrored)
-            fields = tuple(pt[0].keys()) if pt else TRACK_FIELDS
-            st = (
-                StructArray((1, len(rows)), fields, rows)
-                if rows
-                else StructArray.empty(fields, (1, 0))
-            )
+            if rows:
+                st = StructArray((1, len(rows)), tuple(pt[0].keys()), rows)
+            else:  # no tracks: the struct array as read, its size and fields (measured)
+                st = StructArray.empty(
+                    getattr(st0, "fields", EMPTY_FIELDS), getattr(st0, "shape", (0, 0))
+                )
             write_mat(tmp, {"tracks": st}, version="7.3")
         os.replace(tmp, out)
 
