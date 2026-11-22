@@ -88,15 +88,22 @@ jobs:
 
       # with the figures (matplotlib) and n5 (numcodecs) extras, so that their tests and oracle
       # cases run (both have wheels for every runner); the pinned environment stays without them
-      # (mingw 3.12: with no MinGW-w64 on PATH at all, the runners' own left out of it, as on a
-      # machine with only tools/get_mingw.sh's toolchain)
+      # (mingw 3.12: with no gcc on PATH at all, every folder that has one left out of it (the
+      # runners' MinGW-w64, Strawberry Perl's), as on a machine with only tools/get_mingw.sh's
+      # toolchain)
       - name: Install
         if: ${{ !(runner.os == 'Linux' && matrix.python == '3.12') }}
         env:
           NO_MINGW_ON_PATH: ${{ matrix.toolchain == 'mingw' && matrix.python == '3.12' }}
         run: |
           if [ "$NO_MINGW_ON_PATH" = true ]; then
-            PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i -x '/c/mingw64/bin' | paste -s -d ':' -)
+            for _ in 1 2 3 4 5 6 7 8; do
+              g=$(command -v gcc) || break
+              d=$(dirname "$g")
+              echo "PATH without $d"
+              PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i -x -F "$d" | paste -s -d ':' -)
+              hash -r
+            done
             if command -v gcc; then echo "::error::a gcc is still on PATH"; exit 1; fi
           fi
           python -m pip install --upgrade pip
