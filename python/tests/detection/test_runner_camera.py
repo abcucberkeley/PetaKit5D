@@ -376,3 +376,40 @@ def test_a_camera_threshold_of_0_reaches_the_detector():
     for noise in (0.5, 1.6073164540857801, 3.5492398528252935, 5.5508490987101542, 90.0):
         assert run.residual_threshold(noise, 0.0) == 0.0
         assert run.residual_threshold(noise, NAN) == noise
+
+
+@pytest.mark.parametrize("runner", ["run_detection", "run_detection_frame_parallel"])
+def test_amira_detection_files_asked_for_give_the_ports_warning(tmp_path, runner):
+    """write_amira: no Amira file of the detections is written (MATLAB's runners call an Amira
+    writer that PetaKit5D does not include, warn without an identifier and leave the folder
+    empty); the port leaves the same empty folder and warns once per movie, in its own words
+    with its own identifier; nothing without write_amira"""
+    import os
+    import warnings
+
+    from petakit5d.detection import detect, run
+
+    make_condition(tmp_path, "camera")
+    data, _ = _data(str(tmp_path))
+    for write in (True, False):
+        rp = [str(tmp_path / f"{write}_{i}") + os.sep for i in (1, 2)]
+        detect.clear_threshold_cache()
+        with warnings.catch_warnings(record=True) as wl:
+            warnings.simplefilter("always")
+            getattr(run, runner)(
+                [data[0], data[0]],
+                sigma=SIGMA,
+                results_path=rp,
+                detection_method="lowSNR",
+                background_correction=True,
+                write_amira=write,
+            )
+        ours = [w.message for w in wl if issubclass(w.category, run.AmiraNotWrittenWarning)]
+        assert len(ours) == (2 if write else 0)
+        for w, p in zip(ours, rp, strict=False):
+            assert w.identifier == "petakit5d:detection:amiraNotWritten"
+            assert os.path.join(p, "Amira", "Detection") in str(w)
+        for p in rp:
+            folder = os.path.join(p, "Amira", "Detection")
+            assert os.path.isdir(folder) == write
+            assert not write or not os.listdir(folder)
