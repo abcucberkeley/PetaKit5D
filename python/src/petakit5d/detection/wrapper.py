@@ -54,8 +54,14 @@ movie's ``reversed`` (what the wrapper passes); True or False is deskewData's ``
 option, one direction for all movies, False by default as in MATLAB (which XR_runDetTrack3d
 leaves: reversed scans then come out sheared the wrong way, W2). Existing DS frames of a movie
 that is not skipped are written again.
-``data`` is returned unchanged. Bit for bit MATLAB's in the probes and the oracle cases: DS
-frames of uint16 and single raw frames, angles 31.5 and 45, the movie's dz and pixel size,
+``data`` is returned unchanged. Two MATLAB failures the port does not copy (measured;
+``matlab_quirks`` gives them): deskewData's default ``aname`` is the handle ``@isstr``, which
+it cannot join to a folder name, so each call without ``aname`` fails at its first movie before
+anything is written (``MATLAB:UnableToConvert``, W5), where the port's default ``None`` is the
+source folder; and a condition without movies fails whatever the options
+(``MATLAB:Java:InvalidInput``, W6), where the port returns it. Bit for bit MATLAB's in the
+probes and the oracle cases: DS frames of uint16 and single raw frames, angles 31.5 and 45, the
+movie's dz and pixel size,
 reversed scans with ``'Reverse'`` true (the lab's deskew of a reversed scan: measured equal to
 ``XR_deskewRotateFrame`` with ``reverse`` true); ``dRange`` from the doubles. Not ported:
 ``s_cmos_camera_flip`` (MATLAB calls a missing ``GU_sCMOSCameraFlip``: the same error),
@@ -227,12 +233,59 @@ def _deskew_frame(
     return float(ds.min()), float(ds.max())
 
 
+class _Isstr:
+    """MATLAB's function handle ``@isstr`` (``isstr``: whether a value is a char array).
+    deskewData's default ``'aname'`` is this handle, a validator in the place of a default: a
+    call that leaves ``aname`` out fails (``_results_name``; ``docs/parity/detection.md`` W5).
+    The port's default is ``None`` instead; ``matlab_quirks`` gives MATLAB's."""
+
+    __slots__ = ()
+
+    def __call__(self, x: Any) -> bool:
+        from petakit5d.params.values import MString
+
+        return isinstance(x, str) and not isinstance(x, MString)
+
+    def __repr__(self) -> str:
+        return "<handle @isstr>"
+
+
+_ISSTR = _Isstr()
+
+
+def _results_name(aname: Any) -> str:
+    """The folder of settings.mat and dynRange.mat in a movie's source folder, as deskewData
+    joins ``'aname'`` to it (measured): ``[]`` (None), ``''`` and empty numbers the source folder
+    itself, text a folder of that name. A function handle (its default, ``@isstr``) or a logical
+    value cannot be joined (``MATLAB:UnableToConvert``); a cell names no folder
+    (``MATLAB:exist:firstInputString``); numbers, which MATLAB joins as character codes, are not
+    ported. MATLAB fails so at each movie before it writes anything for it."""
+    if aname is None or isinstance(aname, str):
+        return "" if aname is None else str(aname)
+    if callable(aname) or np.asarray(aname).dtype == np.bool_:
+        raise WrapperError(
+            "deskewData cannot join a function handle or a logical value to a folder name "
+            "(its default aname is the handle @isstr).",
+            "MATLAB:UnableToConvert",
+        )
+    if isinstance(aname, list | tuple):
+        raise WrapperError(
+            "deskewData's aname must be text: a cell names no folder.",
+            "MATLAB:exist:firstInputString",
+        )
+    if np.size(aname) == 0:
+        return ""
+    raise NotImplementedError(
+        f"deskew_data: aname {aname!r}: numbers (MATLAB joins their character codes) are not ported"
+    )
+
+
 def _deskew_movies(
     data: Sequence[Any],
     *,
     overwrite: bool = False,
     skew_angle: float = 31.5,
-    aname: str | None = None,
+    aname: Any = None,
     rotate: bool = False,
     s_cmos_camera_flip: bool = False,
     crop: bool = False,
@@ -242,9 +295,10 @@ def _deskew_movies(
     num_threads: int | None = None,
 ) -> Sequence[Any]:
     """deskewData's work (module docstring): the DS frames of every movie, ``settings.mat`` and
-    ``dynRange.mat``. Returns ``data`` unchanged. ``reverse``: deskewData's ``'Reverse'`` for all
-    movies (False, as in MATLAB); None, each movie's scan direction (``reversed``: the wrapper's,
-    W2). ``num_threads`` frames are deskewed at once (None: the CPUs available)."""
+    ``dynRange.mat`` (in ``<source><aname>``: ``_results_name``). Returns ``data`` unchanged.
+    ``reverse``: deskewData's ``'Reverse'`` for all movies (False, as in MATLAB); None, each
+    movie's scan direction (``reversed``: the wrapper's, W2). ``num_threads`` frames are deskewed
+    at once (None: the CPUs available)."""
     ow = _logical(overwrite, "Overwrite")
     rev = None if reverse is None else _logical(reverse, "Reverse")
     for flag, name in ((rotate, "Rotate"), (crop, "Crop"), (llff_correction, "LLFFCorrection")):
@@ -258,7 +312,7 @@ def _deskew_movies(
     from petakit5d.core.threads import resolve_threads
 
     for movie in data:
-        out = movie.source + ("" if aname is None or aname == "" else str(aname)) + os.sep
+        out = movie.source + _results_name(aname) + os.sep
         os.makedirs(out, exist_ok=True)
         if not ow and _ds_done(movie):
             continue
@@ -291,6 +345,14 @@ def _deskew_movies(
 
 
 _LIGHT_SHEET = tuple(f"{k}Ch{c}" for k in ("LSImage", "Background") for c in range(1, 5))
+
+
+def _deskew_matlab_in(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """the MATLAB-name layer: an ``'aname'`` given as ``[]`` is the source folder (as ``''`` is),
+    so that with ``matlab_quirks`` only an ``aname`` left out is MATLAB's default (W5)"""
+    if "aname" in kwargs and kwargs["aname"] is None:
+        kwargs = {**kwargs, "aname": ""}
+    return kwargs
 
 
 @register(
@@ -326,13 +388,23 @@ _LIGHT_SHEET = tuple(f"{k}Ch{c}" for k in ("LSImage", "Background") for c in ran
     Param(
         "aname",
         None,
-        "Folder of settings.mat and dynRange.mat in each movie's source folder (None: the "
-        "source folder; MATLAB's default, the handle @isstr, not measured).",
+        "Folder of settings.mat and dynRange.mat in each movie's source folder (None, MATLAB's "
+        "[]: the source folder; with matlab_quirks an aname left out fails, as MATLAB's default "
+        "does).",
         matlab_default="@isstr",
+        differs="MATLAB's default, the handle @isstr, fails at the first movie (detection.md W5)",
     ),
     Param("ZoffsetCorrection", None, "Not ported: false only.", accepts="logical"),
+    Param(
+        "matlab_quirks",
+        None,
+        "MATLAB's failures instead of the port's results: with aname left out (W5) and without "
+        "movies (W6).",
+        python_only=True,
+    ),
     Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
     task="C04",
+    matlab_in=_deskew_matlab_in,
 )
 def deskew_data(
     data=None,
@@ -357,8 +429,9 @@ def deskew_data(
     background_ch_3: str = "",
     background_ch_4: str = "",
     save_16bit: bool = False,
-    aname: str | None = None,
+    aname: Any = None,
     zoffset_correction: bool = False,
+    matlab_quirks: bool = False,
     num_threads: int | None = None,
 ) -> Sequence[Any]:
     """MATLAB's ``deskewData(data, reverse, 'Overwrite', overwrite, 'SkewAngle', skew_angle,
@@ -366,7 +439,12 @@ def deskew_data(
     ``dynRange.mat``; returns ``data`` unchanged. Registered with MATLAB's interface and the
     port's own checks; it takes ``reverse`` (one direction for all movies), ``overwrite``,
     ``skew_angle``, ``s_cmos_camera_flip`` (MATLAB's error), ``aname`` and ``num_threads``, every
-    other option at its default only (``NotImplementedError`` otherwise)."""
+    other option at its default only (``NotImplementedError`` otherwise). ``aname`` None
+    (MATLAB's ``[]``, the default) is the source folder itself; MATLAB's own default, the handle
+    ``@isstr``, makes every movie fail (W5). ``matlab_quirks`` gives MATLAB's failures: with
+    ``aname`` None, MATLAB's default (``WrapperError``, ``MATLAB:UnableToConvert``; ``''`` is then
+    the source folder), and without movies (``MATLAB:Java:InvalidInput``, W6), where the port
+    returns ``data``."""
     for name, value, default in (
         ("MovieSelector", movie_selector, "cell"),
         ("Crop", crop, False),
@@ -393,6 +471,13 @@ def deskew_data(
             "MATLAB loads the condition interactively; give data (load_condition_data).",
             "MATLAB:services:MissingRequiredCapability",
         )
+    if matlab_quirks:
+        if len(data) == 0:  # W6
+            raise WrapperError(
+                "deskewData fails on a condition without movies.", "MATLAB:Java:InvalidInput"
+            )
+        if aname is None:  # W5: MATLAB's default
+            aname = _ISSTR
     return _deskew_movies(
         data,
         overwrite=overwrite,

@@ -2,6 +2,7 @@
 wrapper (the lab's XR_runDetTrack3d): oracle cases on synthetic conditions, the wrapper's stages
 replaced by MATLAB's recorded outputs, and its orchestration with stand-ins (task C04a)."""
 
+import math
 import os
 import shutil
 from pathlib import Path
@@ -13,6 +14,7 @@ from petakit5d.detection import condition as cond
 from petakit5d.detection import wrapper
 from petakit5d.testing import oracle, synth
 from petakit5d.testing.cases import Case, Data, InPath, Tree, mcell
+from petakit5d.testing.compare import MCell, MFunc
 
 RAW = (9, 24, 40)  # (z, y, x) of a raw frame
 LLC = (
@@ -101,18 +103,39 @@ def wrapper_opts(overwrite=False, angle=31.5, aname="Analysis", flip=False) -> l
     ]  # fmt: skip
 
 
-def _deskew(root, rel, load_opts, opts):
+def _deskew(root, rel, load_opts, opts, quirks=False, movies=True):
     lo = {LOAD_OPTS[load_opts[i]]: load_opts[i + 1] for i in range(0, len(load_opts), 2)}
     d = cond.load_condition_data(root + rel, ["ch1", "ch2"], ["gfp", "rfp"], **lo)
     o = {opts[i]: opts[i + 1] for i in range(0, len(opts), 2)}
     wrapper.deskew_data(
-        d,
+        d if movies else cond.Condition([]),
         overwrite=o.get("Overwrite", False),
         skew_angle=o.get("SkewAngle", 31.5),
-        aname=o.get("aname"),
         s_cmos_camera_flip=o.get("sCMOSCameraFlip", False),
         reverse=o.get("Reverse", False),
+        matlab_quirks=quirks,
+        **({"aname": o["aname"]} if "aname" in o else {}),  # (left out: the default)
     )
+
+
+def _deskew_quirks(*args):
+    """MATLAB's failures (detection.md W5, W6): matlab_quirks"""
+    _deskew(*args, quirks=True)
+
+
+def _deskew_matlab(root, rel, load_opts, opts):
+    """the same call through the MATLAB-name layer (MATLAB's option names and defaults), with
+    MATLAB's failure for aname left out (matlab_quirks, W5)"""
+    from petakit5d.params import find
+
+    lo = {LOAD_OPTS[load_opts[i]]: load_opts[i + 1] for i in range(0, len(load_opts), 2)}
+    d = cond.load_condition_data(root + rel, ["ch1", "ch2"], ["gfp", "rfp"], **lo)
+    find("deskewData").call_matlab(d, *opts, "matlab_quirks", True)
+
+
+def without_aname(opts: list) -> list:
+    i = opts.index("aname")
+    return opts[:i] + opts[i + 2 :]
 
 
 def _wrapper_deskew(root, rel, load_opts):
@@ -143,16 +166,23 @@ def _cases():
     tree = {"t": Tree(make_tree, "t")}
     cs = []
 
-    def add(cid, rel, load_opts=(), opts=None, error=None, inputs=None):
+    def add(cid, rel, load_opts=(), opts=None, error=None, inputs=None, py_opts=None):
         opts = wrapper_opts() if opts is None else opts
         kw = {"expect_error": error, "py_error": (wrapper.WrapperError, RuntimeError)}
         kw = kw if error else {}
+        if isinstance(error, str):  # an error raised in third-party code: its identifier only
+            kw["error_text"] = "withheld"
         cs.append(
             Case(
                 f"deskew.{cid}",
                 code=LOAD + "deskewData(d, in{4}{:}); out = {};",
                 args=[InPath("t"), rel, mcell(*load_opts), mcell(*opts)],
-                py_args=[InPath("t"), rel, list(load_opts), list(opts)],
+                py_args=[
+                    InPath("t"),
+                    rel,
+                    list(load_opts),
+                    list(opts if py_opts is None else py_opts),
+                ],
                 python=_deskew,
                 nargout=0,
                 inputs=inputs or tree,
@@ -191,6 +221,42 @@ def _cases():
     # identifier is not compared here
     add("flip_fails", "plain/Ex1_synth_z0p5/", opts=wrapper_opts(flip=True), error=True)
     cs[-1].python = _without_identifier
+    # 'aname' left out: deskewData's default is the handle @isstr, which it cannot join to a
+    # folder name, so it fails at the first movie before it writes anything (a skipped movie
+    # too), as with any handle or logical; a cell names no folder. The port's default None is
+    # MATLAB's [] (detection.md W5); matlab_quirks gives MATLAB's failure (the MATLAB-name
+    # layer's case, then the snake_case function's)
+    unable = "MATLAB:UnableToConvert"
+    add("no_aname", "plain/Ex1_synth_z0p5/", opts=without_aname(wrapper_opts()), error=unable)
+    cs[-1].python = _deskew_matlab
+    add("no_options", "plain/Ex1_synth_z0p5/", opts=[], error=unable)
+    cs[-1].python = _deskew_quirks
+    add("no_aname_skips", "ch1done/Ex1_synth_z0p5/", opts=[], error=unable)
+    cs[-1].python = _deskew_quirks
+    # the port's default against MATLAB's 'aname', [] (empty_aname's MATLAB call: its reference)
+    add("default_aname", "plain/Ex1_synth_z0p5/", opts=wrapper_opts(aname=None),
+        py_opts=without_aname(wrapper_opts()))  # fmt: skip
+    add("aname_logical", "plain/Ex1_synth_z0p5/", opts=wrapper_opts(aname=False), error=unable)
+    add("aname_handle", "plain/Ex1_synth_z0p5/", opts=wrapper_opts(aname=MFunc("@sin")),
+        error=unable, py_opts=wrapper_opts(aname=math.sin))  # fmt: skip
+    add("aname_cell", "plain/Ex1_synth_z0p5/", opts=wrapper_opts(aname=MCell((0, 0), [])),
+        error="MATLAB:exist:firstInputString", py_opts=wrapper_opts(aname=()))  # fmt: skip
+    # a condition without movies: MATLAB fails whatever the options (detection.md W6); the port
+    # returns it, and gives MATLAB's failure with matlab_quirks
+    cs.append(
+        Case(
+            "deskew.no_movies",
+            code=LOAD + "d = d([]); deskewData(d, in{4}{:}); out = {};",
+            args=[InPath("t"), "plain/Ex1_synth_z0p5/", mcell(), mcell(*wrapper_opts())],
+            py_args=[InPath("t"), "plain/Ex1_synth_z0p5/", [], wrapper_opts()],
+            python=lambda *a: _deskew(*a, quirks=True, movies=False),
+            nargout=0,
+            inputs=tree,
+            expect_error="MATLAB:Java:InvalidInput",
+            py_error=(wrapper.WrapperError,),
+            error_text="withheld",
+        )
+    )
     # the wrapper's deskew of a reversed scan, fixed (W2): XR_runDetTrack3d's deskewData call
     # (its 'aname' [] and results folder) with 'Reverse' as the movie's direction
     cs.append(
@@ -705,3 +771,97 @@ def test_interactive_and_bad_flags(condition, calls):
             condition, sigma=((1.3, 1.5),), overwrite=np.array([True, False])
         )
     assert e.value.identifier == "MATLAB:badsubscript"
+
+
+# -- deskewData's 'aname' -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("aname", "folder"),
+    [(None, ""), ("", ""), ("Analysis", "Analysis"), (np.zeros(0), ""), (np.zeros((0, 0)), "")],
+)
+def test_aname_names_the_results_folder(aname, folder):
+    """[] (None), '' and empty numbers: the source folder itself; text: a folder of that name
+    (cases deskew.wrapper_call, deskew.empty_aname, deskew.demo_call)"""
+    assert wrapper._results_name(aname) == folder
+
+
+@pytest.mark.parametrize(
+    ("aname", "identifier"),
+    [
+        (wrapper._ISSTR, "MATLAB:UnableToConvert"),  # the default (case deskew.no_aname)
+        (math.sin, "MATLAB:UnableToConvert"),  # deskew.aname_handle
+        (False, "MATLAB:UnableToConvert"),  # deskew.aname_logical
+        (np.array([True, False]), "MATLAB:UnableToConvert"),
+        ((), "MATLAB:exist:firstInputString"),  # deskew.aname_cell
+        (("Analysis",), "MATLAB:exist:firstInputString"),
+    ],
+)
+def test_aname_that_deskew_data_cannot_join(aname, identifier):
+    with pytest.raises(wrapper.WrapperError) as err:
+        wrapper._results_name(aname)
+    assert err.value.identifier == identifier
+
+
+@pytest.mark.parametrize("aname", [5, 2.5, np.array([65, 66]), {"a": 1}])
+def test_aname_of_numbers_is_not_ported(aname):
+    """MATLAB joins numbers as character codes (measured: 'aname', 5 gives a folder named
+    char(5)); the port does not take them"""
+    with pytest.raises(NotImplementedError, match="not ported"):
+        wrapper._results_name(aname)
+
+
+def test_the_registration_of_aname_and_matlab_quirks():
+    """aname's default is None (MATLAB's []), MATLAB's the handle @isstr (W5); matlab_quirks is
+    the port's own"""
+    from petakit5d.params import find
+
+    spec = find("deskewData")
+    p = spec.param("aname")
+    assert p.default is None and p.default_text() == "@isstr" and "W5" in p.differs
+    q = spec.param("matlab_quirks")
+    assert q.python_only and q.default is False
+    assert wrapper._ISSTR("a") and not wrapper._ISSTR(1.0)
+    assert repr(wrapper._ISSTR) == "<handle @isstr>"
+
+
+def _one_movie(tmp_path) -> cond.Condition:
+    m = tmp_path / "Ex1_synth_z0p5"
+    write_raw(m, n=2)
+    return cond.load_condition_data(f"{m}/", ["ch1", "ch2"], ["gfp", "rfp"])
+
+
+def test_the_default_aname_is_the_source_folder(tmp_path):
+    """deskew_data without aname writes settings.mat and dynRange.mat into the source folder, as
+    MATLAB's 'aname', [] (case deskew.default_aname); with matlab_quirks it fails at the movie
+    as MATLAB's default does (W5), and '' is then the source folder. The same through the
+    MATLAB-name layer, where a given [] is the source folder"""
+    from petakit5d.params import find
+
+    d = _one_movie(tmp_path)
+    src = d[0].source
+    wrapper.deskew_data(d)
+    assert os.path.isfile(f"{src}settings.mat") and os.path.isfile(f"{src}dynRange.mat")
+    os.remove(f"{src}settings.mat")
+    with pytest.raises(wrapper.WrapperError) as err:
+        wrapper.deskew_data(d, overwrite=True, matlab_quirks=True)
+    assert err.value.identifier == "MATLAB:UnableToConvert"
+    assert not os.path.isfile(f"{src}settings.mat")  # nothing written
+    wrapper.deskew_data(d, overwrite=True, aname="", matlab_quirks=True)
+    assert os.path.isfile(f"{src}settings.mat")
+    spec = find("deskewData")
+    with pytest.raises(wrapper.WrapperError) as err:
+        spec.call_matlab(d, "Overwrite", True, "matlab_quirks", True)
+    assert err.value.identifier == "MATLAB:UnableToConvert"
+    spec.call_matlab(d, "Overwrite", True, "aname", None, "matlab_quirks", True)
+    spec.call_matlab(d, "Overwrite", True)
+
+
+def test_a_condition_without_movies_is_returned():
+    """MATLAB fails on it whatever the options (W6, case deskew.no_movies); the port returns it,
+    and gives MATLAB's failure with matlab_quirks"""
+    assert tuple(wrapper.deskew_data(cond.Condition([]))) == ()
+    assert tuple(wrapper.deskew_data(cond.Condition([]), aname="Analysis")) == ()
+    with pytest.raises(wrapper.WrapperError) as err:
+        wrapper.deskew_data(cond.Condition([]), aname="Analysis", matlab_quirks=True)
+    assert err.value.identifier == "MATLAB:Java:InvalidInput"

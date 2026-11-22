@@ -484,6 +484,17 @@ Two more measured behaviours:
 - `deskewData` takes `'Reverse'` (and `'reverse'`) but refuses `'Reversed'`
   (`MATLAB:InputParser:UnmatchedParameter`).
 
+### MATLAB's failures the port does not copy (W5, W6; proposed 2026-11-22, for the user)
+
+Two calls that MATLAB fails on and the port carries out, measured on synthetic conditions
+(probe jobs 4640495, 4640506 and 4640539, oracle tree 45b2bb1). `deskew_data(...,
+matlab_quirks=True)` (`'matlab_quirks', true` in the MATLAB-name layer) gives MATLAB's failures.
+
+| Row | Where | MATLAB | The port | Evidence |
+|---|---|---|---|---|
+| W5 | `deskew_data` with `aname` left out | `deskewData`'s default `aname` is the handle `@isstr` (a validator in the place of a default), which it cannot join to a folder name: every call that leaves `aname` out fails at its first movie, before it writes anything (`MATLAB:UnableToConvert`; one movie or two, and a movie it would skip). `XR_runDetTrack3d` and the step-by-step demo pass `aname` (`XR_runDetTrack3d` its own, `[]` by default), so they never meet it | the default `aname` is `None`, MATLAB's `[]`: `settings.mat` and `dynRange.mat` in each movie's source folder. With `matlab_quirks` an `aname` left out fails as MATLAB's (`''` is then the source folder) | case `deskew.default_aname` (the port's default against MATLAB's `'aname', []`); MATLAB's failure in `deskew.no_aname` (the MATLAB-name layer), `deskew.no_options` and `deskew.no_aname_skips`, compared with `matlab_quirks` |
+| W6 | `deskew_data` of a condition without movies | fails whatever its options, `aname` given or not (`MATLAB:Java:InvalidInput`) | returns the condition unchanged; with `matlab_quirks` MATLAB's failure | case `deskew.no_movies` (with `matlab_quirks`) |
+
 ## Track processing (`detection.processing`, `detection.amira`, C04b)
 
 `XR_runTrackProcessing3D` and `rotateTracks3D` are new implementations from MATLAB's behaviour as

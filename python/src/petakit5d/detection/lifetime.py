@@ -50,8 +50,11 @@ port's own checks of the options, made from MATLAB's accept and refuse behaviour
 ``AnalysisPath``, ``ProcessedTracks``, ``LifetimeData``, ``Overwrite`` and ``Display`` (measured:
 the numbers and the two printed values are the same with 'off'), every other option at its
 default only (``NotImplementedError`` otherwise). ``plot_intensity_cohorts`` is registered the
-same way; it takes ``AnalysisPath`` (measured with another folder on the demo data) and every
-other option at its default only. The figures are left out.
+same way; it takes ``AnalysisPath`` (measured with another folder on the demo data) and
+``LftDataName`` (the lifetime data file it reads: measured with a renamed file), every other
+option at its default only. Where that file is missing, the port writes it from the tracks, as
+the lifetime analysis does; MATLAB's plotIntensityCohorts fails then (measured, for the default
+name too). The figures are left out.
 """
 
 from __future__ import annotations
@@ -1183,7 +1186,7 @@ def _quartiles(M: np.ndarray, nt: int):
         matlab_default="@nanmean",
         accepts="handle",
     ),
-    Param("LftDataName", None, "Not ported: the default only (lifetimeData.mat)."),
+    Param("LftDataName", None, "Lifetime data file in each movie's analysis folder."),
     Param("AmplitudeCorrection", None, "Not ported: [] only."),
     Param(
         "Align",
@@ -1237,12 +1240,14 @@ def plot_intensity_cohorts(
     """MATLAB's ``cohorts = plotIntensityCohorts(data, 'AnalysisPath', analysis_path)`` (module
     docstring; the figure left out): one dict per significance combination of the other channel
     (all true first), with ``bounds`` (in the first only), ``t``, ``Amin``, ``Aplus`` and ``A``
-    (channels x cohorts object arrays of rows). Reads the lifetimeData.mat files (it writes them
-    first where they are missing). With one movie, ``A`` is the median of the tracks and
-    ``Amin``, ``Aplus`` their 25th and 75th percentiles (MATLAB's other branch, measured).
+    (channels x cohorts object arrays of rows). Reads the lifetime data files (``lft_data_name``,
+    lifetimeData.mat; it writes them first where they are missing, where MATLAB fails). With one
+    movie, ``A`` is the median of the tracks and ``Amin``, ``Aplus`` their 25th and 75th
+    percentiles (MATLAB's other branch, measured).
     ``data`` as ``run_lifetime_analysis`` takes it. Registered with MATLAB's interface (names,
-    order, defaults) and the port's own checks of the options; it takes ``analysis_path``, every
-    other option at its default only (``NotImplementedError`` otherwise)."""
+    order, defaults) and the port's own checks of the options; it takes ``analysis_path`` and
+    ``lft_data_name``, every other option at its default only (``NotImplementedError``
+    otherwise)."""
     from petakit5d.matlabcompat import reduce as mr
     from petakit5d.matlabcompat import stats as ms
 
@@ -1279,7 +1284,6 @@ def plot_intensity_cohorts(
         ("ShowPct", show_pct, True),
         ("ShowStats", show_stats, True),
         ("AvgFun", avg_fun, None),
-        ("LftDataName", lft_data_name, "lifetimeData.mat"),
         ("AmplitudeCorrection", amplitude_correction, None),
         ("Align", align, "left"),
     ):
