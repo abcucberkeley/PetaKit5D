@@ -7,7 +7,17 @@
 # Neither installs anything into the petakit5d package: the port as distributed contains no GPL code.
 cmake_minimum_required(VERSION 3.26...4.2)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    # Windows: the compilers of a source build, as petakit5d's, chosen before project() (cmake/Pk5dToolchain.cmake,
+    # petakit5d's file: MinGW-builds' GCC 12.2.0 with the UCRT where it is found, else MSVC)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pk5dToolchain.cmake)
+    if(CMAKE_HOST_WIN32)
+        pk5d_windows_toolchain()
+    endif()
     project(petakit5d_fftw LANGUAGES C)
+    if(WIN32)
+        message(STATUS "petakit5d-fftw: the Windows toolchain: ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION} "
+                       "(${CMAKE_C_COMPILER}): ${PK5D_TOOLCHAIN_WHY}")
+    endif()
     if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
         set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
     endif()
@@ -26,17 +36,14 @@ if(_pk5d_fftw_standalone AND SKBUILD)
     install(TARGETS pk5d_fftw3f pk5d_fftw3 LIBRARY DESTINATION petakit5d_fftw RUNTIME DESTINATION petakit5d_fftw)
     install(FILES ${pk5d_fftw_SOURCE_DIR}/COPYING DESTINATION petakit5d_fftw RENAME FFTW-COPYING)
     # MinGW-w64: the toolchain's notices of what the libraries link in (GCC's libgcc, MinGW-w64's runtime), copied
-    # as the toolchain ships them into petakit5d_fftw/licenses/; with MinGW-builds' GCC 12.2.0 (petakit5d's
-    # tools/get_mingw.sh) their SHA-256 must be that toolchain's (petakit5d's cmake/Pk5dExtension.cmake does the same)
+    # as the toolchain ships them into petakit5d_fftw/licenses/; with MinGW-builds' GCC 12.2.0 with the UCRT
+    # (cmake/Pk5dToolchain.cmake's check; petakit5d's tools/get_mingw.sh) their SHA-256 must be that toolchain's
+    # (petakit5d's cmake/Pk5dExtension.cmake does the same)
     if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
         get_filename_component(_pk5d_tc "${CMAKE_C_COMPILER}" DIRECTORY)
         get_filename_component(_pk5d_tc "${_pk5d_tc}/../licenses" ABSOLUTE)
         set(PK5D_MINGW_NOTICES_DIR "${_pk5d_tc}" CACHE PATH "MinGW-w64: the toolchain's licenses folder")
-        execute_process(COMMAND "${CMAKE_C_COMPILER}" --version OUTPUT_VARIABLE _pk5d_banner ERROR_QUIET)
-        set(_pk5d_pinned FALSE)
-        if(_pk5d_banner MATCHES "x86_64-posix-seh-rev2, Built by MinGW-W64 project\\) 12\\.2\\.0")
-            set(_pk5d_pinned TRUE)
-        endif()
+        pk5d_mingw_toolchain_check("${CMAKE_C_COMPILER}" _pk5d_pinned _pk5d_toolchain)
         foreach(_e
                 "gcc/COPYING3=8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
                 "gcc/COPYING.RUNTIME=9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
