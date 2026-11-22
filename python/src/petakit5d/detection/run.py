@@ -247,7 +247,10 @@ def runner_camera_threshold(source: str | os.PathLike) -> float:
     the camera search stops with one of MATLAB's errors (no settings file above ``source``, or
     one without a camera line): ``XR_runDetection3D`` goes on without a camera threshold then
     (task C02d, probe r8d), with ``residual_threshold``'s noise. MATLAB's frame-parallel runner
-    stops with the error there instead (its bug of D13, which the port does not reproduce)."""
+    stops with the error there instead, its bug of D13, which the port does not reproduce: the
+    lab's camera search means to give no camera class in both cases (its code returns '' for
+    them, but fails before it), and the lab's threshold function to estimate the threshold from
+    the image without camera information (task C09, probe d13)."""
     from petakit5d.core.dtypes import NAN
 
     try:
@@ -270,7 +273,9 @@ def residual_threshold(noise: float, camera: float) -> float:
     as ``XR_runDetection3D`` has it since the fix of its dropped detections without one;
     MATLAB's frame-parallel runner passes NaN there and so finds nothing, or stops with the
     camera search's error, its bug, which the port does not reproduce (docs/parity/detection.md
-    D13). The values at exactly the bounds are not measured."""
+    D13). A camera threshold of 0 is 0 for every frame, as both of MATLAB's runners pass it on
+    (task C09, probe d13: a stubbed threshold function). The values at exactly the bounds are
+    not measured."""
     noise, camera = float(noise), float(camera)
     if math.isnan(camera):
         return noise
