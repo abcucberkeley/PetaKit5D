@@ -29,6 +29,7 @@ import pytest
 from petakit5d import fft as P
 from petakit5d.core.dtypes import mround
 from petakit5d.io import read_mat, read_tiff, read_zarr
+from petakit5d.params import MatlabArgumentError
 from petakit5d.testing import oracle, synth
 from petakit5d.testing.cases import Case, InPath, Tree
 from petakit5d.testing.compare import tol, tree
@@ -37,7 +38,8 @@ from petakit5d.testing.synth import CounterRNG
 from petakit5d.tools import chromatic as ch
 
 BACKENDS = ("exact", "permissive")
-ERRORS = (ch.ChromaticError, ValueError, OSError, RuntimeError, IndexError)
+# (MatlabArgumentError: the registry's check of the lab's validator, as inputParser's)
+ERRORS = (ch.ChromaticError, MatlabArgumentError, ValueError, OSError, RuntimeError, IndexError)
 # ChromaticShiftCorrectionTest: ImSize [48 40 24] (MATLAB's [y x z]) as (z, y, x)
 IM = (24, 48, 40)
 # the demo's offsets, MATLAB's rows [y x z] and the port's (z, y, x)
@@ -633,7 +635,8 @@ def test_offsets_have_a_row_per_channel(tmp_path):
 def test_mode_is_one_of_three_in_any_case(tmp_path):
     # (ChromaticShiftCorrectionTest/modeIsOneOfThreeInAnyCase)
     path = write_dataset(tmp_path / "d")
-    with pytest.raises(ch.ChromaticError) as e:
+    # the registry refuses it first, as inputParser does (the lab's validator read whole)
+    with pytest.raises(MatlabArgumentError) as e:
         run(path, "none")
     assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
     assert not os.path.exists(f"{path}{RESULT}")
