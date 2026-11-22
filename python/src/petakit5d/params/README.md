@@ -119,9 +119,16 @@ Rules:
   (`os.PathLike`) become str (also in lists: a file name is MATLAB's char), MATLAB values from
   the MATLAB layer or the command line become str, bool, int (integer-valued doubles), float,
   tuples and None, then the kinds convert them; NumPy arrays pass through untouched (a
-  `volume` is converted). Values are checked against the validator's class tests on
-  MATLAB's form (`ischar`, `islogical`, `isnumeric`, `iscell`, ... ; other terms such as
-  `numel(x) == 3` are not checked), as inputParser checks them: `pad=1` is an error.
+  `volume` is converted). Values are checked against the validator on MATLAB's form, as
+  inputParser checks them: `pad=1` is an error. A text of class tests (`ischar`, `islogical`,
+  `isnumeric`, `iscell`, ...) is checked by them; a text with other terms (`numel(x) <= 2`,
+  `size(x, 2) == 5`, `any(strcmpi(x, {'cubic', 'linear'}))`, `ismember(lower(x), {...})`,
+  `x > 0 && round(x) == x`) is read whole and evaluated as MATLAB evaluates it, with MATLAB's
+  errors where a term raises one (`params/conditions.py`, measured in
+  `tests/params/test_conditions.py`). An arguments-block declaration is checked by the
+  classes its class and its `mustBeNumeric`, `mustBeNumericOrLogical`, `mustBeText` and
+  `mustBeTextScalar` take; its sizes, its other validation functions (`mustBeFinite`,
+  `mustBeMember`) and MATLAB's conversions to its class and size are not.
   Defaults are not checked when they are None (MATLAB's `[]`: inputParser validates no
   default, as in `ip.addOptional('info', [], @isstruct)`); they are compared with MATLAB's.
 - **Positional text**: in the MATLAB-name layer an optional argument without a validator
