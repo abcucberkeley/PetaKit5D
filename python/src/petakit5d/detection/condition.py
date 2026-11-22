@@ -17,8 +17,9 @@ What the loaders do (measured, oracle tree 45b2bb1):
   number after the selector (``ignore_exp_number``: by name, ASCII). Without
   ``ignore_exp_number`` a condition folder without a number is no movie, and an unnumbered
   movie folder below it is an error here (MATLAB errs or returns another movie twice). No
-  movie: ``No movies found in: <folder>``. A relative folder is taken from the
-  current folder (``..`` kept as it is); folders end with the separator.
+  movie: an error (MATLAB's has no identifier, and its third-party text is not kept here). A
+  relative folder is taken from the current folder (``..`` kept as it is); folders end with the
+  separator.
 - **channels**: ``<movie>/<name>/`` for each of ``ch_names``; ``source`` is the first. A missing
   channel folder is MATLAB's ``MATLAB:Java:InvalidInput``. The deskewed and rotated frames are
   ``<channel>DS/<name>.tif`` and ``<channel>DSR/<name>.tif`` whatever a frame's extension.
@@ -290,7 +291,7 @@ def find_movies(
         levels.append(nxt)
     found = [[p for p in level if sel in _name(p).lower()] for level in levels]
     if not any(found):
-        raise ConditionError(f"No movies found in: {root}")
+        raise ConditionError(f"the condition folder {root} holds no movie folder")
     if ignore_exp_number:
         return [p for level in found for p in level]
     out: list[str] = []

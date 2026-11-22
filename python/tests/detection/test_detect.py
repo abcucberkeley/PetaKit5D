@@ -376,6 +376,8 @@ def _cases():
             python=_py_frame_parallel,
             inputs={"cond": Tree(REF.make_condition, "cond")},
             tree=tree_spec(per_file={"*.mat": TOL_DETECT}),
+            # the detections' Amira writer warns without identifier: third-party, text withheld
+            warning_text="withheld",
             marks=("slow",),
         )
     )
@@ -568,6 +570,9 @@ def _rt_cases():
                 python=py,
                 inputs={"cond": Tree(make, "cond")},
                 tree=tree_spec(per_file={"*.mat": TOL_DETECT}),
+                # the frame-parallel runner writes Amira files, whose writer's warning (without
+                # identifier: third-party) has its text withheld
+                warning_text="withheld" if code == RT_FRAME_PARALLEL else "record",
             )
         )
     return cs

@@ -298,12 +298,24 @@ def _cases():
         + "out = {data};"
     )
     two_sigmas = np.array([[1.3, 1.6], [1.5, 1.9]])
-    for name, code, args, nout in (
-        ("chain.by_step", by_step, [InPath("cond")], 2),
-        ("chain.integrated", integrated, [InPath("cond")], 2),
-        ("chain.speedup_no_background", speedup, [InPath("cond"), two_sigmas], 1),
+    # the detections' Amira writer (not with 'WriteAmira' false) warns without identifier:
+    # third-party code, its text withheld
+    for name, code, args, nout, wt in (
+        ("chain.by_step", by_step, [InPath("cond")], 2, "withheld"),
+        ("chain.integrated", integrated, [InPath("cond")], 2, "withheld"),
+        ("chain.speedup_no_background", speedup, [InPath("cond"), two_sigmas], 1, "record"),
     ):
-        cs.append(Case(name, code=code, args=args, nargout=nout, inputs=cond, marks=("slow",)))
+        cs.append(
+            Case(
+                name,
+                code=code,
+                args=args,
+                nargout=nout,
+                inputs=cond,
+                warning_text=wt,
+                marks=("slow",),
+            )
+        )
     # the multiple-experiments demo: XR_runDetTrack3d as it calls it (with its unknown
     # 'zoffsetCorrection'), then the lifetime analysis and the intensity cohorts
     multiple = (
@@ -326,6 +338,7 @@ def _cases():
             nargout=3,
             inputs={"lcond": Tree(make_lifetime_condition, "lcond")},
             expect_error="stats:ecdf:NotEnoughData",
+            warning_text="withheld",  # the Amira writer's warnings (ecdf's error keeps its text)
             marks=("slow",),
         )
     )

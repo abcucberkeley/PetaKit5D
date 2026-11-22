@@ -777,7 +777,10 @@ class Case:
     'record', or 'withheld' for MATLAB code whose message texts the repository does not keep
     (third-party code): the manifest holds the identifiers of the error and the warnings, not
     their messages, and the error is compared by its identifier only, an empty one too (the
-    Python exception's ``identifier`` must be MATLAB's). helpers:
+    Python exception's ``identifier`` must be MATLAB's). warning_text: 'record', or 'withheld'
+    for the warnings' messages alone (third-party warnings in a case whose error, if any, keeps
+    its text): the manifest holds each warning's identifier, an empty one too, so their number
+    stays; with warnings='ids' each Python warning must carry an ``identifier``. helpers:
     folders of MATLAB helper files (relative to python/) put on MATLAB's path. device: 'cpu',
     'gpu' or 'gpu:<model>'. marks: extra pytest marks. outputs: output names. out_roles: one
     out role per output (see ``out_to_matlab``): Python's results in MATLAB's form.
@@ -802,6 +805,7 @@ class Case:
     py_error: type | tuple = Exception
     error_message: bool = False
     error_text: str = "record"
+    warning_text: str = "record"
     code: str | None = None
     helpers: Sequence[str] = ()
     device: str = "cpu"
@@ -820,6 +824,8 @@ class Case:
             raise ValueError(f"case {self.id}: error_text is 'record' or 'withheld'")
         if self.error_text == "withheld" and self.error_message:
             raise ValueError(f"case {self.id}: a withheld error message cannot be compared")
+        if self.warning_text not in ("record", "withheld"):
+            raise ValueError(f"case {self.id}: warning_text is 'record' or 'withheld'")
         if self.outputs is not None and len(self.outputs) != self.nargout:
             raise ValueError(
                 f"case {self.id}: {len(self.outputs)} output names for nargout={self.nargout}"
@@ -856,6 +862,12 @@ class Case:
             name = self.output_names()[i]
             return self.compare.get(name, self.compare.get(i, EXACT))
         return self.compare
+
+    @property
+    def withholds_warnings(self) -> bool:
+        """whether MATLAB's warning texts are withheld (warning_text, or error_text: a case whose
+        error text is withheld keeps none of its messages)"""
+        return "withheld" in (self.warning_text, self.error_text)
 
     @property
     def captures_files(self) -> bool:
@@ -1065,6 +1077,8 @@ class Case:
                 "identifier": getattr(w.message, "identifier", "") or "",
                 "message": str(w.message),
                 "category": w.category.__name__,
+                # set by the port (an empty one too), not taken for an unrelated warning
+                "identified": getattr(w.message, "identifier", None) is not None,
             }
             for w in wl
         ]
