@@ -9,8 +9,9 @@ one and two frames, with and without a spot in them (a "ghost": rendered, not de
 the p-values the gap test reads set (``pval_set``); spots in the buffer frames; an amplitude
 that rises and falls (multiple peaks); tracks cut at the movie's ends; two-frame, single-frame
 and border tracks; compound tracks with a split and a merge; a track that moves in large
-steps. Frames are Gaussian spots on a background of 100 with noise of standard deviation 5,
-bit-stable (``petakit5d.testing.synth``).
+steps; read-out windows whose free fit ends exactly 2 voxels from the window's centre (the keep
+rule's bound, ``run.keep_bound``). Frames are Gaussian spots on a background of 100 with noise of
+standard deviation 5, bit-stable (``petakit5d.testing.synth``).
 """
 
 from __future__ import annotations
@@ -190,7 +191,9 @@ def _render(spec: dict, det, channel: int, f: int) -> np.ndarray:
     return np.clip(v, 1, 65535).astype(np.uint16)
 
 
-def _mask(det, f: int) -> np.ndarray:
+def _mask(det, f: int, blocks=()) -> np.ndarray:
+    """frame f's (0-based) detection mask: an ellipsoid of semi-axes 2 sigma around each
+    detection, and the spec's blocks ``(x0, x1, y0, y1, z0, z1)`` (1-based, inclusive)"""
     nz, ny, nx = SIZE
     s = SIGMA[0]
     m = np.zeros(SIZE, dtype=bool)
@@ -201,6 +204,8 @@ def _mask(det, f: int) -> np.ndarray:
         m |= ((xx - x) ** 2 + (yy - y) ** 2) / (2 * s[0]) ** 2 + (zz - z) ** 2 / (
             2 * s[1]
         ) ** 2 <= 1
+    for x0, x1, y0, y1, z0, z1 in blocks:
+        m[z0 - 1 : z1, y0 - 1 : y1, x0 - 1 : x1] = True
     return m.astype(np.uint8) * 255
 
 
@@ -517,16 +522,66 @@ def _empty_spec() -> dict:
     return {"tracks": tracks, "ghosts": []}
 
 
+# the keep rule's bound: per window (its kind, the axis of its face, the spot's distance beyond
+# the read-out position along it, the spot's amplitude, the track's (x, y) offset from its cell)
+KEEP_BOUND = (
+    ("end", 2, 3.2, 400.0, (0.0, 0.0)),
+    ("end", 2, 2.7, 250.0, (0.0, 0.0)),
+    ("end", 0, 3.5, 400.0, (0.0, 0.0)),
+    ("end", 1, 3.5, 400.0, (0.0, 0.0)),
+    ("gap", 2, 3.2, 400.0, (0.0, 0.0)),
+    ("end", 2, 3.2, 400.0, (0.3, -0.2)),
+)
+
+
+def _keep_bound_spec() -> dict:
+    """the keep rule's bound (docs/parity/detection.md W13): read-out windows whose last valid
+    voxel along one axis lies 2 voxels beyond the window's centre (a block of the detection
+    mask, not the track's component, covers the voxels after it: NaN to the fit), with a bright
+    spot beyond that face, so that the free fit ends on the face, exactly 2 voxels from the
+    centre, where MATLAB refits at the given position (its bound is ``< 2``): the first frames
+    of end buffers and a gap frame, along z, x and y (``KEEP_BOUND``); and the pool"""
+    cells = [(x, y) for y in range(12, 82, 12) for x in range(12, 102, 12)]
+    tracks, ghosts, blocks = [], [], {}
+    for i in range(12):
+        tr = _track(cells[i], 6 + i % 5, [150.0 + 25.0 * i] * (8 + i), jit=1.0, name=f"kpool{i}")
+        tracks.append(tr[0])
+    c = iter(cells[12:])
+    for kind, axis, dist, amp, (dx, dy) in KEEP_BOUND:
+        x, y = next(c)
+        x, y = x + dx, y + dy
+        if kind == "gap":  # frames 8 to 19, frame 13 a gap without a spot of its own
+            tr = _track((x, y), 8, [300.0] * 12, gaps=(5,), ghost=0.0)
+            frame = 13
+        else:  # frames 8 to 17: the end buffer's first frame 18
+            tr = _track((x, y), 8, [300.0] * 10)
+            frame = 18
+        tracks.append(tr[0])
+        q = [x, y, 12.3]  # the read-out position, and its voxel
+        r = [int(mround(v)) for v in q]
+        spot = list(q)
+        spot[axis] += dist
+        ghosts.append([frame, *spot, amp])
+        # the block: from 3 voxels beyond the centre along the axis, over the windows' extent
+        # (half sizes 3 in x and y, 3 and 4 in z for the two channels) across it
+        lo = [v - 5 for v in r]
+        hi = [v + 5 for v in r]
+        lo[axis], hi[axis] = r[axis] + 3, r[axis] + 5
+        blocks.setdefault(frame, []).append((lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]))
+    return {"tracks": tracks, "ghosts": ghosts, "mask_blocks": blocks}
+
+
 SPECS = {
     "designed": _spec,
     "compound": _compound_spec,
     "buffers": _buffer_spec,
     "empty": _empty_spec,
     "late": _late_spec,
+    "keep_bound": _keep_bound_spec,
 }
 
 
-@functools.lru_cache(maxsize=5)
+@functools.lru_cache(maxsize=6)
 def _designed(kind: str = "designed"):
     """the spec, its detections per frame and the rendered frames (both channels)"""
     spec = SPECS[kind]()
@@ -553,8 +608,10 @@ def make_condition(folder, kind: str = "designed") -> None:
             synth.write_tiff(ex / f"ch{c}" / "DS" / frame_name(c, f + 1), vols[c][f])
     with open(ex / "probe_Settings.txt", "w", newline="\n") as fh:
         fh.write('Camera type = "Orca4.0"\n')
+    blocks = spec.get("mask_blocks", {})
     for f in range(NF):
-        synth.write_tiff(ana / "Masks" / dmask_name(f + 1, NF), _mask(det, f))
+        m = _mask(det, f, blocks.get(f + 1, ()))
+        synth.write_tiff(ana / "Masks" / dmask_name(f + 1, NF), m)
 
 
 def frame_info(kind: str = "designed"):
@@ -1002,6 +1059,7 @@ RUN_CASES = [
     _case("empty", exact=True),
     _case("late"),
     _cut_case(),
+    _case("keep_bound"),
 ]
 CASES = [*RUN_CASES, ROT_REVERSED]
 
@@ -1629,6 +1687,41 @@ def test_buffer_test_reads_intensities():
     t = tr(ea=(0, 0, 301))
     t["A"][0, 1] = 280.0  # the largest A + c now the first column's 400
     assert _buffers_bad(t)
+
+
+def test_a_free_fit_exactly_2_voxels_from_the_centre_is_refitted():
+    """the keep rule's bound (docs/parity/detection.md W13; with MATLAB: case run.keep_bound):
+    on that case's designed windows the free fit ends on a face of the window's box exactly 2
+    voxels from the centre along the designed axis, and the read-out is the refit of amplitude
+    and background at the given position, as MATLAB's (it keeps a free fit less than 2 voxels
+    from the centre)"""
+    from petakit5d.detection import detect, fit
+    from petakit5d.detection import processing as P
+
+    spec = _keep_bound_spec()
+    det = _detections(spec)
+    cells = [(x, y) for y in range(12, 82, 12) for x in range(12, 102, 12)]
+    n = 0
+    for j, (kind, axis, _dist, _amp, (dx, dy)) in enumerate(KEEP_BOUND):
+        frame = 13 if kind == "gap" else 18
+        x, y = cells[12 + j][0] + dx, cells[12 + j][1] + dy
+        labels = P.mask_labels(_mask(det, frame - 1, spec["mask_blocks"][frame]))
+        for ch in (0, 1):
+            vol = _render(spec, det, ch + 1, frame - 1).astype(np.float64)
+            sig = np.asarray(SIGMA[ch], dtype=np.float64)
+            A_map, c_map = detect.est_gaussian_amplitude3d(vol, sig)
+            pt = P._Point(0, 0, kind, x, y, 12.3)
+            wins, p0, corner = P.read_windows(vol, labels, [pt], sig, A_map, c_map)
+            wxy, wz = P.window_half_sizes(sig)
+            d = np.abs(fit.fit_cd(wins, p0).prm[0, :3] - np.array([wxy, wxy, wz], dtype=float))
+            assert d[axis] == 2.0 and np.max(np.delete(d, axis)) < 2, (j, ch, d)
+            res = P.fit_windows(wins, p0, corner, sig)
+            assert not res["_kept"][0], (j, ch)
+            M = fit.fit_gaussian3d_mex(wins, p0, "Ac")
+            assert res["A"][0] == M.prm[0, 3] and res["c"][0] == M.prm[0, 6], (j, ch)
+            assert [res[k][0] for k in "xyz"] == list(corner[0] + p0[0, :3]), (j, ch)
+            n += 1
+    assert n == 12
 
 
 def test_empty_processed_tracks_file(tmp_path):
