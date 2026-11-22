@@ -1153,7 +1153,12 @@ _DEFAULTS_ONLY = ("fit_mixtures", "preprocess", "postprocess", "window_size", "b
         "Frames (0-based; default all; all only).",
         matlab_default="arrayfun(@(x) 1:x.movieLength, data, 'unif', 0)",
         convert="index1",
-        accepts="cell | struct | string | handle | evenly-spaced",
+        accepts=(
+            "evenly-spaced | cell & raises(MATLAB:UndefinedFunction)"
+            " | struct & raises(MATLAB:UndefinedFunction)"
+            " | string & raises(MATLAB:UndefinedFunction)"
+            " | handle & raises(MATLAB:UndefinedFunction)"
+        ),
     ),
     Param("Preprocess", None, "Preprocessing (true only).", accepts="logical"),
     Param("Postprocess", None, "Postprocessing (true only).", accepts="logical"),

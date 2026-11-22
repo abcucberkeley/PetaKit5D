@@ -328,8 +328,14 @@ def test_lock_clean_removes_old_tmp_only(tmp_path):
     assert not old.exists() and new.exists()
 
 
-@pytest.mark.parametrize("flag", ["overwrite", "ds", "s_cmos_camera_flip"])
-def test_flags_must_be_logical(flag):
-    with pytest.raises(offsets.OffsetError) as e:
-        offsets.correct_xz_offset_data([], **{flag: 1})
+@pytest.mark.parametrize(
+    ("flag", "name"),
+    [("overwrite", "Overwrite"), ("ds", "DS"), ("s_cmos_camera_flip", "sCMOSCameraFlip")],
+)
+def test_flags_must_be_logical(flag, name):
+    """the registry checks the lab's validators (@islogical), with inputParser's identifier"""
+    from petakit5d.params import MatlabArgumentError
+
+    with pytest.raises(MatlabArgumentError, match=f"'{name}'") as e:
+        offsets.correct_xz_offset_data(cond.Condition([]), **{flag: 1})
     assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"

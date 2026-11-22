@@ -60,7 +60,11 @@ reversed scans with ``'Reverse'`` true (the lab's deskew of a reversed scan: mea
 ``XR_deskewRotateFrame`` with ``reverse`` true); ``dRange`` from the doubles. Not ported:
 ``s_cmos_camera_flip`` (MATLAB calls a missing ``GU_sCMOSCameraFlip``: the same error),
 ``crop`` (MATLAB waits for an interactive region), ``rotate`` (the DSR frames),
-``llff_correction`` and ``zoffset_correction``.
+``llff_correction`` and ``zoffset_correction``. ``deskew_data`` is registered with MATLAB's
+interface (``data`` and ``reverse`` by position, the other options by name) and the port's own
+checks of its options, made from MATLAB's behaviour; the options it does not take are at their
+defaults only. The wrapper deskews through its implementation (``_deskew_movies``), whose
+``reverse`` None takes each movie's direction.
 """
 
 from __future__ import annotations
@@ -150,6 +154,24 @@ def _call(name: str, *args: Any, **kwargs: Any) -> Any:
 # -- deskewData ---------------------------------------------------------------------------------
 
 
+def _movies_from_matlab(x: Any) -> Any:
+    from petakit5d.detection.condition import Movie
+
+    if x is None or isinstance(x, list | tuple) and x and isinstance(x[0], Movie):
+        return x
+    if isinstance(x, Movie):
+        return [x]
+    if isinstance(x, dict):
+        return [Movie.from_matlab(x)]
+    return [Movie.from_matlab(dict(e)) for e in x]
+
+
+def _movies_to_matlab(x: Any) -> Any:
+    from petakit5d.detection.condition import movies_to_matlab
+
+    return None if x is None else movies_to_matlab(x)
+
+
 def _logical(v: Any, name: str) -> bool:
     if not isinstance(v, bool | np.bool_) and not (
         isinstance(v, np.ndarray) and v.dtype == np.bool_
@@ -205,7 +227,7 @@ def _deskew_frame(
     return float(ds.min()), float(ds.max())
 
 
-def deskew_data(
+def _deskew_movies(
     data: Sequence[Any],
     *,
     overwrite: bool = False,
@@ -219,12 +241,10 @@ def deskew_data(
     reverse: bool | None = False,
     num_threads: int | None = None,
 ) -> Sequence[Any]:
-    """``deskewData(data, 'Overwrite', overwrite, 'SkewAngle', skew_angle, 'aname', aname,
-    ...)`` with the options the wrapper and the demos pass (module docstring): the DS frames of
-    every movie, ``settings.mat`` and ``dynRange.mat``. Returns ``data`` unchanged.
-    ``reverse``: deskewData's ``'Reverse'`` for all movies (False, as in MATLAB); None, each
-    movie's scan direction (``reversed``: the wrapper's, W2). ``num_threads`` frames are
-    deskewed at once (None: the CPUs available)."""
+    """deskewData's work (module docstring): the DS frames of every movie, ``settings.mat`` and
+    ``dynRange.mat``. Returns ``data`` unchanged. ``reverse``: deskewData's ``'Reverse'`` for all
+    movies (False, as in MATLAB); None, each movie's scan direction (``reversed``: the wrapper's,
+    W2). ``num_threads`` frames are deskewed at once (None: the CPUs available)."""
     ow = _logical(overwrite, "Overwrite")
     rev = None if reverse is None else _logical(reverse, "Reverse")
     for flag, name in ((rotate, "Rotate"), (crop, "Crop"), (llff_correction, "LLFFCorrection")):
@@ -270,25 +290,127 @@ def deskew_data(
     return data
 
 
+_LIGHT_SHEET = tuple(f"{k}Ch{c}" for k in ("LSImage", "Background") for c in range(1, 5))
+
+
+@register(
+    "deskewData",
+    # third-party code (its header names an outside author): its interface, with the port's own
+    # checks (accepts=) made from MATLAB's behaviour (tests/params/test_third_party_checks.py);
+    # the options the port takes at their defaults only raise NotImplementedError otherwise
+    Param(
+        "data",
+        None,
+        "The condition (load_condition_data's movies).",
+        convert=(_movies_from_matlab, _movies_to_matlab),
+        accepts="struct",
+    ),
+    Param("Reverse", None, "Deskew every movie as a reversed scan.", accepts="logical"),
+    Param("Overwrite", None, "Deskew the movies whose DS frames exist again.", accepts="logical"),
+    Param("MovieSelector", None, "Not ported: the default only.", accepts="char"),
+    Param("Crop", None, "Not ported: false only (MATLAB asks for a region).", accepts="logical"),
+    Param("SkewAngle", None, "Skew angle in degrees.", accepts="scalar"),
+    Param("Rotate", None, "Not ported: false only (the DSR frames).", accepts="logical"),
+    Param("CheckFrameMismatch", None, "Not ported: false only.", accepts="logical"),
+    Param("LoadSettings", None, "Not ported: false only.", accepts="logical"),
+    Param(
+        "sCMOSCameraFlip",
+        None,
+        "Flip the frames (MATLAB calls a missing function: the same error).",
+        accepts="logical",
+    ),
+    Param("LLFFCorrection", None, "Not ported: false only.", accepts="logical"),
+    Param("LowerLimit", None, "Not ported: the default only.", accepts="numeric"),
+    *[Param(n, None, "Not ported: '' only.", convert="same", accepts="char") for n in _LIGHT_SHEET],
+    Param("Save16bit", None, "Not ported: false only.", accepts="logical"),
+    Param(
+        "aname",
+        None,
+        "Folder of settings.mat and dynRange.mat in each movie's source folder (None: the "
+        "source folder; MATLAB's default, the handle @isstr, not measured).",
+        matlab_default="@isstr",
+    ),
+    Param("ZoffsetCorrection", None, "Not ported: false only.", accepts="logical"),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    task="C04",
+)
+def deskew_data(
+    data=None,
+    reverse: bool = False,
+    *,
+    overwrite: bool = False,
+    movie_selector: str = "cell",
+    crop: bool = False,
+    skew_angle: float = 31.5,
+    rotate: bool = False,
+    check_frame_mismatch: bool = False,
+    load_settings: bool = False,
+    s_cmos_camera_flip: bool = False,
+    llff_correction: bool = False,
+    lower_limit: float = 0.4,
+    ls_image_ch_1: str = "",
+    ls_image_ch_2: str = "",
+    ls_image_ch_3: str = "",
+    ls_image_ch_4: str = "",
+    background_ch_1: str = "",
+    background_ch_2: str = "",
+    background_ch_3: str = "",
+    background_ch_4: str = "",
+    save_16bit: bool = False,
+    aname: str | None = None,
+    zoffset_correction: bool = False,
+    num_threads: int | None = None,
+) -> Sequence[Any]:
+    """MATLAB's ``deskewData(data, reverse, 'Overwrite', overwrite, 'SkewAngle', skew_angle,
+    'aname', aname, ...)`` (module docstring): the DS frames of every movie, ``settings.mat`` and
+    ``dynRange.mat``; returns ``data`` unchanged. Registered with MATLAB's interface and the
+    port's own checks; it takes ``reverse`` (one direction for all movies), ``overwrite``,
+    ``skew_angle``, ``s_cmos_camera_flip`` (MATLAB's error), ``aname`` and ``num_threads``, every
+    other option at its default only (``NotImplementedError`` otherwise)."""
+    for name, value, default in (
+        ("MovieSelector", movie_selector, "cell"),
+        ("Crop", crop, False),
+        ("Rotate", rotate, False),
+        ("CheckFrameMismatch", check_frame_mismatch, False),
+        ("LoadSettings", load_settings, False),
+        ("LLFFCorrection", llff_correction, False),
+        ("LowerLimit", lower_limit, 0.4),
+        *zip(
+            _LIGHT_SHEET,
+            (ls_image_ch_1, ls_image_ch_2, ls_image_ch_3, ls_image_ch_4,
+             background_ch_1, background_ch_2, background_ch_3, background_ch_4),
+            ("",) * 8,
+            strict=True,
+        ),
+        ("Save16bit", save_16bit, False),
+        ("ZoffsetCorrection", zoffset_correction, False),
+    ):  # fmt: skip
+        same = value == default if isinstance(default, str) else _same_number(value, default)
+        if not same:
+            raise NotImplementedError(f"deskew_data: {name} {value!r}: only the default is ported")
+    if data is None:
+        raise WrapperError(
+            "MATLAB loads the condition interactively; give data (load_condition_data).",
+            "MATLAB:services:MissingRequiredCapability",
+        )
+    return _deskew_movies(
+        data,
+        overwrite=overwrite,
+        skew_angle=skew_angle,
+        aname=aname,
+        s_cmos_camera_flip=s_cmos_camera_flip,
+        reverse=reverse,
+        num_threads=num_threads,
+    )
+
+
+def _same_number(value: Any, default: float) -> bool:
+    """whether a logical or number is the default: a single element of its value"""
+    a = np.asarray(value)
+    return a.dtype.kind in "biuf" and a.size == 1 and float(a.reshape(-1)[0]) == float(default)
+
+
 # -- XR_runDetTrack3d ---------------------------------------------------------------------------
-
-
-def _movies_from_matlab(x: Any) -> Any:
-    from petakit5d.detection.condition import Movie
-
-    if x is None or isinstance(x, list | tuple) and x and isinstance(x[0], Movie):
-        return x
-    if isinstance(x, Movie):
-        return [x]
-    if isinstance(x, dict):
-        return [Movie.from_matlab(x)]
-    return [Movie.from_matlab(dict(e)) for e in x]
-
-
-def _movies_to_matlab(x: Any) -> Any:
-    from petakit5d.detection.condition import movies_to_matlab
-
-    return None if x is None else movies_to_matlab(x)
 
 
 def _is_pc() -> bool:
@@ -435,7 +557,7 @@ def run_detection_tracking(
     for p in paths:
         os.makedirs(p, exist_ok=True)
     data = Condition(
-        deskew_data(
+        _deskew_movies(
             data,
             overwrite=ow[0],
             skew_angle=skew_angle,
