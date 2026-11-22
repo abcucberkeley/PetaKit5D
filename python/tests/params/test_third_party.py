@@ -34,6 +34,10 @@ THIRD_PARTY_FUNCTIONS = {
     "XR_runTrackProcessing3D",  # the same
     "XR_runTracking3D",  # the same
     "runLifetimeAnalysis3D",  # the same
+    "plotIntensityCohorts",  # the same (CMEAnalysis' copy, the one that runs)
+    "loadTrackSettings",  # the same (CMEAnalysis' copy, the one that runs)
+    "deskewData",  # its header names an outside author
+    "rotateTracks3D",  # its header names an outside author (cmeAnalysis)
 }
 
 LLSM = "an outside-author folder (llsmtools)"
@@ -73,7 +77,8 @@ def test_the_extract_keeps_only_the_interface_of_third_party_code(extract_json):
         found.add(name)
         assert e["third_party"] == why, name
         assert all(p["validator"] is None for p in e["params"]), name
-        assert any(p.get("withheld") for p in e["params"]), name
+        # (loadTrackSettings validates none of its options: nothing to withhold)
+        assert any(p.get("withheld") for p in e["params"]) or name == "loadTrackSettings", name
         assert all(v is None for v in ((e["parser"] or {}).get("validators") or {}).values())
     assert found == THIRD_PARTY_FUNCTIONS
 
@@ -115,6 +120,11 @@ def test_the_stored_extract_is_in_the_makers_form(extract_json):
         ("pointDetection/runLifetimeAnalysis3D.m", True),
         ("pointDetection/rotateTracks3D.m", True),
         ("pointDetection/deskewData.m", True),
+        ("pointDetection/CMEAnalysis_104_XR/software/plotIntensityCohorts.m", True),
+        ("pointDetection/llsmtools/cmeAnalysis3D/plotIntensityCohorts.m", True),
+        ("pointDetection/CMEAnalysis_104_XR/software/loadTrackSettings.m", True),
+        ("pointDetection/llsmtools/cmeAnalysis3D/deskewData.m", True),
+        ("pointDetection/XR_correctXZoffsetData3D.m", False),
         ("imageProcessing/filters/x.m", True),
         ("third_parties/u-track3D/tracking/x.m", True),
         ("third_parties/sim3D/perdecomp_3D.m", True),
@@ -405,3 +415,241 @@ def test_the_table_shows_no_validator_of_third_party_code(extract):
                     matlab,
                 )
     assert THIRD_PARTY_FUNCTIONS <= set(sections)
+
+
+# ----------------------------------------------------------------------------------------------
+# plotIntensityCohorts, registered by its interface
+
+
+def test_a_files_own_decision_wins_over_its_folders():
+    from petakit5d.params.provenance import THIRD_PARTY
+
+    cme = "pointDetection/CMEAnalysis_104_XR/"
+    own = cme + "software/plotIntensityCohorts.m"
+    assert third_party(own) == THIRD_PARTY[own] != THIRD_PARTY[cme]
+    assert third_party(cme + "software/loadTracks.m") == THIRD_PARTY[cme]
+
+
+def test_plot_intensity_cohorts_is_registered_by_its_interface(extract):
+    """MATLAB's names, kinds, order and defaults (check_registry's rules), no validator text,
+    and a check of the port's own for each withheld validator but data's (MATLAB took every
+    probe of data at its parse: tests/params/test_third_party_checks.py)"""
+    from petakit5d.params import find
+    from petakit5d.params.check import check_signature_defaults
+
+    spec = find("plotIntensityCohorts")
+    fn = extract["plotIntensityCohorts"]
+    assert spec.python_name == "petakit5d.detection.lifetime.plot_intensity_cohorts"
+    assert check_spec(spec, fn) == [] and check_signature_defaults(spec) == []
+    assert [(p.kind, p.matlab) for p in spec.params] == [(m.kind, m.name) for m in fn.params]
+    assert all(p.validator is None for p in spec.params)
+    withheld = {m.name for m in fn.params if m.withheld}
+    assert {p.matlab for p in spec.params if p.accepts} == withheld - {"data"}
+
+
+# a value other than the default that the port's check takes, per parameter taken at its
+# default only
+NOT_DEFAULT = {
+    "ch": (1.0,),
+    "overwrite": True,
+    "cohort_bounds_s": (10.0, 20.0),
+    "show_variation": False,
+    "fill_mode": "sem",
+    "front_layer": True,
+    "show_background": True,
+    "rescale": False,
+    "rescaling_reference": "MED",
+    "scale_slave_channel": False,
+    "scaling_factor": (1.0, 2.0),
+    "max_intensity_threshold": 1.0,
+    "exclude_visitors": False,
+    "slave_name": ("ch2",),
+    "channel_names": ("a",),
+    "line_style": "--",
+    "hues": (0.5,),
+    "colormap": (1.0, 0.0, 0.0),
+    "colormap_fill": (1.0, 0.0, 0.0),
+    "display_mode": "print",
+    "display_all": True,
+    "track_index": (1.0,),
+    "cutoff_f": 3,
+    "alpha": 0.01,
+    "y_tick": (0.0, 1.0),
+    "y_lim": (0.0, 1.0),
+    "parent": 1.0,
+    "remove_outliers": True,
+    "plot_x_label": False,
+    "show_pct": False,
+    "show_stats": False,
+    "avg_fun": len,
+    "lft_data_name": "other.mat",
+    "amplitude_correction": (1.0,),
+    "align": "right",
+}
+
+
+@pytest.mark.parametrize("name", list(NOT_DEFAULT))
+def test_plot_intensity_cohorts_takes_its_other_options_at_their_defaults_only(name):
+    from petakit5d.detection.lifetime import plot_intensity_cohorts
+
+    with pytest.raises(NotImplementedError, match="only the default is ported"):
+        plot_intensity_cohorts({"source": "movie_missing/"}, **{name: NOT_DEFAULT[name]})
+
+
+def test_every_option_of_plot_intensity_cohorts_but_its_ported_ones_is_guarded():
+    from petakit5d.params import find
+
+    ported = {"data", "analysis_path"}
+    assert {p.py for p in find("plotIntensityCohorts").params} - ported == set(NOT_DEFAULT)
+
+
+# ----------------------------------------------------------------------------------------------
+# deskewData and loadTrackSettings (third-party), XR_correctXZoffsetData3D (the lab's)
+
+
+@pytest.mark.parametrize(
+    ("name", "python", "third"),
+    [
+        ("deskewData", "petakit5d.detection.wrapper.deskew_data", True),
+        ("loadTrackSettings", "petakit5d.detection.tracking.settings.track_settings", True),
+        ("XR_correctXZoffsetData3D", "petakit5d.detection.offsets.correct_xz_offset_data", False),
+        ("rotateTracks3D", "petakit5d.detection.processing.rotate_tracks", True),
+        ("GU_estimateSigma3D", "petakit5d.detection.sigma.estimate_sigma3d", False),
+    ],
+)
+def test_the_detection_helpers_are_registered(extract, name, python, third):
+    """MATLAB's names, kinds, order and defaults (check_registry's rules); third-party code without
+    validator texts and with a check of the port's own for each withheld validator; the lab's code
+    with its validators"""
+    from petakit5d.params import find
+    from petakit5d.params.check import check_signature_defaults
+
+    spec = find(name)
+    fn = extract[name]
+    assert spec.python_name == python
+    assert check_spec(spec, fn) == [] and check_signature_defaults(spec) == []
+    assert (fn.third_party is not None) is third
+    if third:
+        assert all(p.validator is None for p in spec.params)
+        assert {p.matlab for p in spec.params if p.accepts} == {
+            m.name for m in fn.params if m.withheld
+        }
+    else:
+        ours = [p.validator for p in spec.params if not p.python_only]
+        assert ours == [m.validator for m in fn.params]
+
+
+DESKEW_NOT_DEFAULT = {
+    "movie_selector": "Ex",
+    "crop": True,
+    "rotate": True,
+    "check_frame_mismatch": True,
+    "load_settings": True,
+    "llff_correction": True,
+    "lower_limit": 0.5,
+    **{f"ls_image_ch_{c}": "ls.tif" for c in range(1, 5)},
+    **{f"background_ch_{c}": "bg.tif" for c in range(1, 5)},
+    "save_16bit": True,
+    "zoffset_correction": True,
+}
+
+
+@pytest.mark.parametrize("name", list(DESKEW_NOT_DEFAULT))
+def test_deskew_data_takes_its_other_options_at_their_defaults_only(name):
+    from petakit5d.detection.condition import Condition
+    from petakit5d.detection.wrapper import deskew_data
+
+    with pytest.raises(NotImplementedError, match="only the default is ported"):
+        deskew_data(Condition([]), **{name: DESKEW_NOT_DEFAULT[name]})
+
+
+def test_every_option_of_deskew_data_but_its_ported_ones_is_guarded():
+    from petakit5d.params import find
+
+    ported = {"data", "reverse", "overwrite", "skew_angle", "s_cmos_camera_flip", "aname"}
+    ported.add("num_threads")
+    assert {p.py for p in find("deskewData").params} - ported == set(DESKEW_NOT_DEFAULT)
+
+
+def test_deskew_data_without_data_is_matlabs_interactive_load():
+    from petakit5d.detection.condition import Condition
+    from petakit5d.detection.wrapper import WrapperError, deskew_data
+
+    with pytest.raises(WrapperError) as err:
+        deskew_data()
+    assert err.value.identifier == "MATLAB:services:MissingRequiredCapability"
+    assert tuple(deskew_data(Condition([]), True)) == ()  # data, then Reverse by position
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("gap_radius", (3.0, 6.0)), ("link_radius", (2.0, 4.0)), ("cost_type", "other")],
+)
+def test_track_settings_takes_its_other_options_at_their_defaults_only(name, value):
+    from petakit5d.detection.tracking import track_settings
+
+    with pytest.raises(NotImplementedError, match="only the default is ported"):
+        track_settings(**{name: value})
+
+
+def test_track_settings_takes_matlabs_name_value_options():
+    """loadTrackSettings has name-value options only; Radius [] (None) is the default radius"""
+    import numpy as np
+
+    from petakit5d.detection.tracking import track_settings
+    from petakit5d.params import find
+
+    np.testing.assert_equal(track_settings(), track_settings(radius=(5, 10)))
+    with pytest.raises(TypeError):
+        track_settings((3, 6), 2)
+    got = find("loadTrackSettings").call_matlab("Radius", [3.0, 6.0], "MaxGapLength", 1.0)
+    np.testing.assert_equal(got, track_settings(radius=(3, 6), max_gap_length=1))
+
+
+@pytest.mark.parametrize(
+    ("name", "value"), [("processed_tracks", "other.mat"), ("rotated_tracks_file", "other.mat")]
+)
+def test_rotate_tracks_takes_its_file_names_at_their_defaults_only(name, value):
+    from petakit5d.detection.processing import rotate_tracks
+
+    with pytest.raises(NotImplementedError, match="only the default is ported"):
+        rotate_tracks({"source": "movie_missing/"}, crop=False, **{name: value})
+
+
+def test_rotate_tracks_takes_matlabs_default_crop_which_is_not_ported():
+    from petakit5d.detection.processing import rotate_tracks
+    from petakit5d.params import find
+
+    assert find("rotateTracks3D").param("crop").default is True
+    with pytest.raises(NotImplementedError, match="'Crop' true is not ported"):
+        rotate_tracks({"source": "movie_missing/"})
+
+
+def test_estimate_sigma3d_in_matlabs_form(monkeypatch):
+    """GU_estimateSigma3D's interface: rt and FileName by position ([rt FileName]); the
+    MATLAB-name layer gives XYZ and the detections 1-based and the mask in MATLAB's layout"""
+    import numpy as np
+
+    from petakit5d.detection import detect, sigma
+    from petakit5d.params import find
+
+    seen = []
+    monkeypatch.setattr(sigma, "psf_volume", lambda p: seen.append(p) or np.ones((4, 5, 6)))
+    ps = {
+        "A": np.array([1.0, 3.0]),
+        "s": np.array([[1.3, 1.4], [2.1, 2.2]]),
+        "x": np.array([4.0, 5.0]),
+        "y": np.array([6.0, 7.0]),
+        "z": np.array([2.0, 3.0]),
+    }
+    mask = np.zeros((4, 5, 6), dtype=bool)
+    mask[1, 2, 3] = True
+    monkeypatch.setattr(detect, "point_source_detection_speedup", lambda *a, **k: (ps, mask))
+    sxy, sz, xyz, got, m = sigma.estimate_sigma3d("beads/", "psf.tif")
+    assert seen[-1] == "beads/psf.tif" and (sxy, sz) == (1.4, 2.2)
+    assert xyz == {"x": 5.0, "y": 7.0, "z": 3.0} and m is mask
+    out = find("GU_estimateSigma3D").call_matlab("beads/psf.tif", [])
+    assert seen[-1] == "beads/psf.tif"
+    assert out[:3] == (1.4, 2.2, {"x": 6.0, "y": 8.0, "z": 4.0})
+    np.testing.assert_array_equal(out[3]["x"], [[5.0, 6.0]])
+    assert out[4].shape == (5, 6, 4) and out[4][2, 3, 1]

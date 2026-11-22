@@ -25,6 +25,7 @@ from petakit5d.params.registry import (
 from petakit5d.params.spec import (
     FunctionSpec,
     MatlabArgumentError,
+    MatlabCheckError,
     Param,
     ParamSpec,
     RegistryError,
@@ -40,6 +41,7 @@ __all__ = [
     "MArray",
     "MString",
     "MatlabArgumentError",
+    "MatlabCheckError",
     "NotPorted",
     "Param",
     "ParamSpec",

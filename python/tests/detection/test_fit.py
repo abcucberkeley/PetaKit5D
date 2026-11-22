@@ -1,5 +1,8 @@
-"""The fitGaussian3D mex's fits (task C02b), estGaussianAmplitude3D and conv3fast, against MATLAB
-R2024b through the oracle harness, and their rules (no MATLAB).
+"""The fitGaussian3D mex's fits (task C02b), estGaussianAmplitude3D and conv3fast, and
+XR_fitGaussian3D's CD_Newton fit at the box (task C02d: the box's end at the last valid plane,
+the stop test of a fit held there, the standard deviations of a negative entry on the
+covariance's diagonal), against MATLAB R2024b through the oracle harness, and their rules (no
+MATLAB).
 
 The mex has no source; the port's fits are written from the method (Levenberg-Marquardt least
 squares in Moré's trust-region form) and from the mex's measured behaviour. Its linear modes
@@ -105,6 +108,117 @@ def _py_conv3fast(vol_m, h1, h2, h3):
     return to_matlab(detect.conv3fast(from_matlab(vol_m), h1, h2, h3))
 
 
+# -- XR_fitGaussian3D's CD_Newton fit at the box (task C02d) -------------------------------------
+TOL_CD = tol(
+    reason="parity D3: XR_fitGaussian3D's CD_Newton fits (the sums' order)", rel=1e-9, abs=1e-9
+)
+S_CD, SZ_CD = 1.38, 1.10  # the detector's sigmas of the demo's first channel, rounded
+
+
+def _gauss(shape, centre, s=S_CD, sz=SZ_CD):
+    """a (z, y, x) Gaussian of peak 1 at centre (x, y, z), 0-based voxel coordinates"""
+    nz, ny, nx = shape
+    z, y, x = np.meshgrid(*(np.arange(n, dtype=np.float64) for n in shape), indexing="ij")
+    arg = -((x - centre[0]) ** 2 + (y - centre[1]) ** 2) / (2 * s * s) - (z - centre[2]) ** 2 / (
+        2 * sz * sz
+    )
+    return synth.stable_exp(arg)
+
+
+def cd_window(name):
+    """(z, y, x) windows of counts (100 plus a spot and normal noise of 2.5, rounded): a spot in
+    the NaN planes at the window's end (``end_nan``: MATLAB's box ends at the last valid plane,
+    z 4), one before the first valid plane (``start_nan``: the box starts at the window's first
+    voxel all the same)"""
+    shape = (7, 7, 7)
+    centre, A, nan_z = {
+        "end_nan": ((3.2, 2.9, 5.4), 60.0, (5, 6)),
+        "start_nan": ((2.8, 3.3, 0.9), 60.0, (0, 1)),
+    }[name]
+    r = synth.CounterRNG(2026, "C02d.box." + name).normal(shape)
+    w = np.round(100.0 + A * _gauss(shape, centre) + 2.5 * r)
+    for k in nan_z:
+        w[k] = np.nan
+    return w
+
+
+def searched_window(i):
+    """(z, y, x) windows of a random search of designs (task C02d): one or two spots near or
+    beyond the window's faces, normal noise, rounded; NaN beyond a slanted plane or from a z
+    plane on. ``NEGC``: fits that end with a negative entry on the covariance's diagonal;
+    ``HELD``: fits held on the box while A and c move (no NaN; the stop test's step there is the
+    direction it was held from: two more iterations, A 1e-4 apart)"""
+    shape = (7, 7, 7)
+    r = synth.CounterRNG(2026, f"C02d.negc.{i}").uniform((16,))
+    z, y, x = np.meshgrid(*(np.arange(n, dtype=np.float64) for n in shape), indexing="ij")
+    c1 = (-2 + 10 * r[0], -2 + 10 * r[1], -2 + 10 * r[2])
+    c2 = (-2 + 10 * r[3], -2 + 10 * r[4], -2 + 10 * r[5])
+    A1, A2 = 10 + 120 * r[6], 120 * r[7] * (r[8] > 0.5)
+    noise = 1 + 4 * r[9]
+    n = synth.CounterRNG(2026, f"C02d.negc.n.{i}").normal(shape)
+    w = np.round(100 + A1 * _gauss(shape, c1) + A2 * _gauss(shape, c2) + noise * n)
+    kind = int(r[10] * 4)
+    if kind == 1:
+        w[(z + x * (0.5 + r[11])) < 1 + 4 * r[12]] = np.nan
+    elif kind == 2:
+        w[(z - x * (0.5 + r[11])) > 4 + 3 * r[12]] = np.nan
+    elif kind == 3:
+        w[int(r[11] * 3) + 4 :] = np.nan
+    return w
+
+
+NEGC = (139, 786, 834)
+HELD = (14490, 19948)
+
+
+def cd_start(w):
+    """the start the detector would give such a window: its centre, the amplitude and the
+    background from its values"""
+    return np.array(
+        [3.0, 3.0, 3.0, float(np.nanmax(w) - np.nanmedian(w)), S_CD, SZ_CD, float(np.nanmedian(w))]
+    )
+
+
+def _grid_m(shape_m):
+    """X, Y, Z of a MATLAB (y, x, z) window: its 0-based voxel coordinates"""
+    Y, X, Z = np.meshgrid(*(np.arange(n, dtype=np.float64) for n in shape_m), indexing="ij")
+    return X, Y, Z
+
+
+def _py_cd(win_m, X, Y, Z, p0, mode, n):
+    """XR_fitGaussian3D(win, X, Y, Z, p0, 'xyzAc', 10) as XR_fitGaussians3D calls it: the fit's
+    parameters and the standard deviations of x, y, z, A and c"""
+    R = fit.fit_cd([np.ascontiguousarray(from_matlab(win_m))], np.reshape(p0, (1, 7)))
+    return [R.prm, R.pstd[:, [0, 1, 2, 3, 6]]]
+
+
+def _cd_cases():
+    cs = []
+    wins = {f"cd.{k}": cd_window(k) for k in ("end_nan", "start_nan")}
+    wins.update({f"cd.negc{i}": searched_window(i) for i in NEGC})
+    wins.update({f"cd.held{i}": searched_window(i) for i in HELD})
+    for name, w in wins.items():
+        wm = to_matlab(w)
+        X, Y, Z = _grid_m(wm.shape)
+        cs.append(
+            Case(
+                f"xr_fit.{name.split('.', 1)[1]}",
+                matlab="XR_fitGaussian3D",
+                args=[In("win"), In("X"), In("Y"), In("Z"), cd_start(w), "xyzAc", 10.0],
+                nargout=2,
+                python=_py_cd,
+                inputs={
+                    "win": Value(lambda wm=wm: wm),
+                    "X": Value(lambda X=X: X),
+                    "Y": Value(lambda Y=Y: Y),
+                    "Z": Value(lambda Z=Z: Z),
+                },
+                compare={0: TOL_CD, 1: TOL_CD},
+            )
+        )
+    return cs
+
+
 def _cases():
     W = _windows()
     cs = []
@@ -203,12 +317,38 @@ def _cases():
     return cs
 
 
-CASES = _cases()
+CASES = _cases() + _cd_cases()
 
 
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
+
+
+def test_the_cd_box_ends_at_the_last_valid_plane():
+    """a spot in a window's NaN end planes: the fit held on the last valid plane (z 4), not the
+    window's last (MATLAB's box, measured on its traced fits); a spot before the NaN first
+    planes: the fit goes below the first valid plane (the box starts at the window's first
+    voxel)"""
+    w = cd_window("end_nan")
+    R = fit.fit_cd([w], cd_start(w)[None, :])
+    assert R.prm[0, 2] == 4.0
+    w = cd_window("start_nan")
+    R = fit.fit_cd([w], cd_start(w)[None, :])
+    assert 0.0 < R.prm[0, 2] < 2.0
+
+
+def test_the_cd_fits_negative_covariance_diagonal_gives_the_magnitude():
+    """the designed windows' fits end with a negative entry on C's diagonal: their standard
+    deviations are sqrt(|C_kk| RSS / (n - 6)), finite, as MATLAB's results have them"""
+    for i in NEGC:
+        w = searched_window(i)
+        R = fit.fit_cd([w], cd_start(w)[None, :])
+        d = np.diag(R.C[0])
+        assert np.any(d < 0), i
+        k = np.array([0, 1, 2, 3, 6])
+        want = np.sqrt(np.abs(d) * R.rss[0] / (R.n[0] - 6))
+        np.testing.assert_allclose(R.pstd[0, k], want, rtol=1e-12)
 
 
 # -- rules (no MATLAB) ----------------------------------------------------------------------------
@@ -300,3 +440,17 @@ def test_conv3fast_follows_its_rule_on_small_axes():
     v = _rng("conv").normal((5, 3, 2)) * 10
     out = detect.conv3fast(v, [1.0, 0.5], [1.0, 0.25, 0.1], [1.0, 0.4, 0.2, 0.05])
     assert np.array_equal(out, _conv_ref(v, [1.0, 0.5], [1.0, 0.25, 0.1], [1.0, 0.4, 0.2, 0.05]))
+
+
+def test_the_cd_fit_held_on_the_box_goes_on_while_a_and_c_move():
+    """the HELD windows: their fits end on the box (a coordinate 0 or 6) and take more than the
+    iterations at which the position stopped moving (the stop test's step is the direction the
+    fit is held from, not its move, 0 there)"""
+    for i in HELD:
+        w = searched_window(i)
+        R = fit.fit_cd([w], cd_start(w)[None, :])
+        assert np.isnan(w).sum() == 0
+        assert np.any((R.prm[0, :3] == 0.0) | (R.prm[0, :3] == 6.0)), i
+        # one iteration fewer leaves A short of its value
+        R1 = fit.fit_cd([w], cd_start(w)[None, :], max_iter=int(R.iterations[0]) - 1)
+        assert np.array_equal(R1.prm[0, :3], R.prm[0, :3]) and R1.prm[0, 3] != R.prm[0, 3], i
