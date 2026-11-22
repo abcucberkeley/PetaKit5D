@@ -353,7 +353,7 @@ Richardson-Lucy deconvolution with the OMW back projector (decon_lucy_omw_functi
 
 ### `deskewData` -> `petakit5d.detection.wrapper.deskew_data`
 
-MATLAB's ``deskewData(data, reverse, 'Overwrite', overwrite, 'SkewAngle', skew_angle, 'aname', aname, ...)`` (module docstring): the DS frames of every movie, ``settings.mat`` and ``dynRange.mat``; returns ``data`` unchanged. Registered with MATLAB's interface and the port's own checks; it takes ``reverse`` (one direction for all movies), ``overwrite``, ``skew_angle``, ``s_cmos_camera_flip`` (MATLAB's error), ``aname`` and ``num_threads``, every other option at its default only (``NotImplementedError`` otherwise).
+MATLAB's ``deskewData(data, reverse, 'Overwrite', overwrite, 'SkewAngle', skew_angle, 'aname', aname, ...)`` (module docstring): the DS frames of every movie, ``settings.mat`` and ``dynRange.mat``; returns ``data`` unchanged. Registered with MATLAB's interface and the port's own checks; it takes ``reverse`` (one direction for all movies), ``overwrite``, ``skew_angle``, ``s_cmos_camera_flip`` (MATLAB's error), ``aname`` and ``num_threads``, every other option at its default only (``NotImplementedError`` otherwise). ``aname`` None (MATLAB's ``[]``, the default) is the source folder itself; MATLAB's own default, the handle ``@isstr``, makes every movie fail (W5). ``matlab_quirks`` gives MATLAB's failures: with ``aname`` None, MATLAB's default (``WrapperError``, ``MATLAB:UnableToConvert``; ``''`` is then the source folder), and without movies (``MATLAB:Java:InvalidInput``, W6), where the port returns ``data``.
 
 Third-party MATLAB code: its header names an outside author. Its validators are not shown.
 
@@ -380,8 +380,9 @@ Third-party MATLAB code: its header names an outside author. Its validators are 
 | `BackgroundCh3` | `background_ch_3` | par | same | `''` | `''` | (third-party: not shown) the port's: `char` | Not ported: '' only. |
 | `BackgroundCh4` | `background_ch_4` | par | same | `''` | `''` | (third-party: not shown) the port's: `char` | Not ported: '' only. |
 | `Save16bit` | `save_16bit` | par |  | `false` | `False` | (third-party: not shown) the port's: `logical` | Not ported: false only. |
-| `aname` | `aname` | par |  | `@isstr` | `None` |  | Folder of settings.mat and dynRange.mat in each movie's source folder (None: the source folder; MATLAB's default, the handle @isstr, not measured). |
+| `aname` | `aname` | par |  | `@isstr` | `None` |  | Folder of settings.mat and dynRange.mat in each movie's source folder (None, MATLAB's []: the source folder; with matlab_quirks an aname left out fails, as MATLAB's default does). (default differs from MATLAB: MATLAB's default, the handle @isstr, fails at the first movie (detection.md W5)) |
 | `ZoffsetCorrection` | `zoffset_correction` | par |  | `false` | `False` | (third-party: not shown) the port's: `logical` | Not ported: false only. |
+| `matlab_quirks` | `matlab_quirks` | par |  | `false` | `False` |  | MATLAB's failures instead of the port's results: with aname left out (W5) and without movies (W6). (Python only) |
 | `numThreads` | `num_threads` | par |  | `[]` | `None` |  | Threads (None: the CPUs available). (Python only) |
 
 ### `deskewFrame3D` -> `petakit5d.deskew_rotate.volume.deskew_volume`
@@ -598,17 +599,17 @@ PetaKit5D's ``imresize3_fast(im, outSize, method, outBbox, outClass)``: imresize
 
 ### `loadTrackSettings` -> `petakit5d.detection.tracking.settings.track_settings`
 
-``loadTrackSettings('Radius', radius, 'MaxGapLength', max_gap_length)``: a dict with ``costMatrices`` (two dicts of ``funcName`` and ``parameters``), ``gapCloseParam`` and ``kalmanFunctions``, the fields and values (as MATLAB classes in NumPy) of MATLAB's struct
+``loadTrackSettings('Radius', radius, 'GapRadius', gap_radius, 'LinkRadius', link_radius, 'MaxGapLength', max_gap_length)``: a dict with ``costMatrices`` (two dicts of ``funcName`` and ``parameters``), ``gapCloseParam`` and ``kalmanFunctions``, the fields and values (as MATLAB classes in NumPy) of MATLAB's struct (module docstring)
 
 Third-party MATLAB code: its header names an outside author (cmeAnalysis). Its validators are not shown.
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
-| `Radius` | `radius` | par |  | `[]` | `None` |  | Search radius [min max] of both cost functions (None: [5 10]). |
-| `GapRadius` | `gap_radius` | par |  | `[5,10]` | `(5.0, 10.0)` |  | Not ported: the default only. |
-| `LinkRadius` | `link_radius` | par |  | `[5,10]` | `(5.0, 10.0)` |  | Not ported: the default only. |
+| `Radius` | `radius` | par |  | `[]` | `None` |  | Search radius [min max] of both cost functions (None: GapRadius and LinkRadius). |
+| `GapRadius` | `gap_radius` | par |  | `[5,10]` | `(5.0, 10.0)` |  | Search radius [min max] of the gap closing (without Radius). |
+| `LinkRadius` | `link_radius` | par |  | `[5,10]` | `(5.0, 10.0)` |  | Search radius [min max] of the linking (without Radius). |
 | `MaxGapLength` | `max_gap_length` | par |  | `2` | `2` |  | Longest gap closed, in frames (the time window less one). |
-| `CostType` | `cost_type` | par |  | `'linear'` | `'linear'` |  | Not ported: the default only. |
+| `CostType` | `cost_type` | par |  | `'linear'` | `'linear'` |  | Not ported: 'linear' only (in any case): MATLAB's other values give settings without the cost functions' names, which tracking cannot use. |
 
 ### `MIP_block` -> `petakit5d.tools.mip.mip_block`
 
@@ -681,7 +682,7 @@ The OTF masked Wiener back projector of a PSF (omw_backprojector_generation): th
 
 ### `plotIntensityCohorts` -> `petakit5d.detection.lifetime.plot_intensity_cohorts`
 
-MATLAB's ``cohorts = plotIntensityCohorts(data, 'AnalysisPath', analysis_path)`` (module docstring; the figure left out): one dict per significance combination of the other channel (all true first), with ``bounds`` (in the first only), ``t``, ``Amin``, ``Aplus`` and ``A`` (channels x cohorts object arrays of rows). Reads the lifetimeData.mat files (it writes them first where they are missing). With one movie, ``A`` is the median of the tracks and ``Amin``, ``Aplus`` their 25th and 75th percentiles (MATLAB's other branch, measured). ``data`` as ``run_lifetime_analysis`` takes it. Registered with MATLAB's interface (names, order, defaults) and the port's own checks of the options; it takes ``analysis_path``, every other option at its default only (``NotImplementedError`` otherwise).
+MATLAB's ``cohorts = plotIntensityCohorts(data, 'AnalysisPath', analysis_path)`` (module docstring; the figure left out): one dict per significance combination of the other channel (all true first), with ``bounds`` (in the first only), ``t``, ``Amin``, ``Aplus`` and ``A`` (channels x cohorts object arrays of rows). Reads the lifetime data files (``lft_data_name``, lifetimeData.mat; it writes them first where they are missing, where MATLAB fails). With one movie, ``A`` is the median of the tracks and ``Amin``, ``Aplus`` their 25th and 75th percentiles (MATLAB's other branch, measured). ``data`` as ``run_lifetime_analysis`` takes it. Registered with MATLAB's interface (names, order, defaults) and the port's own checks of the options; it takes ``analysis_path`` and ``lft_data_name``, every other option at its default only (``NotImplementedError`` otherwise).
 
 Third-party MATLAB code: its header names an outside author (cmeAnalysis). Its validators are not shown.
 
@@ -720,7 +721,7 @@ Third-party MATLAB code: its header names an outside author (cmeAnalysis). Its v
 | `ShowPct` | `show_pct` | par |  | `true` | `True` | (third-party: not shown) the port's: `logical` | Not ported: true only. |
 | `ShowStats` | `show_stats` | par |  | `true` | `True` | (third-party: not shown) the port's: `logical` | Not ported: true only. |
 | `AvgFun` | `avg_fun` | par |  | `@nanmean` | `None` | (third-party: not shown) the port's: `handle` | Not ported: the default only (the mean of the values that are not NaN). |
-| `LftDataName` | `lft_data_name` | par |  | `'lifetimeData.mat'` | `'lifetimeData.mat'` |  | Not ported: the default only (lifetimeData.mat). |
+| `LftDataName` | `lft_data_name` | par |  | `'lifetimeData.mat'` | `'lifetimeData.mat'` |  | Lifetime data file in each movie's analysis folder. |
 | `AmplitudeCorrection` | `amplitude_correction` | par |  | `[]` | `None` |  | Not ported: [] only. |
 | `Align` | `align` | par |  | `'left'` | `'left'` | (third-party: not shown) the port's: `in(left,right) \| cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)` | Not ported: the default only. |
 | `AnalysisPath` | `analysis_path` | par |  | `'Analysis'` | `'Analysis'` | (third-party: not shown) the port's: `char` | Analysis folder in each movie's source folder. |

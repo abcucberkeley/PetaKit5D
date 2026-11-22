@@ -365,6 +365,38 @@ def run_file_names(root, tracks: str, lifetime: str) -> list:
     ]
 
 
+# plotIntensityCohorts' LftDataName: the cohorts from the lifetime data file of that name (the
+# renamed one the analysis wrote; lifetimeData.mat is not made)
+COHORTS_FILE_OUT = [f"cohorts{i}.{k}" for i in (1, 2) for k in COHORT_FIELDS] + [
+    "default_file_exists"
+]
+COHORTS_FILE_CODE = (
+    "rt = in{1}; data = XR_loadConditionData3D(rt, {'ch1', 'ch2'}, {'gfp', 'rfp'}); "
+    "runLifetimeAnalysis3D(data, 'AnalysisPath', 'Analysis', 'overwrite', true, "
+    "'ProcessedTracks', in{2}, 'LifetimeData', in{3}); close all force; "
+    "cohorts = plotIntensityCohorts(data, 'AnalysisPath', 'Analysis', 'LftDataName', in{3}); "
+    "close all force; a = [data(1).source 'Analysis' filesep]; out = {"
+    + ", ".join(f"cohorts({i}).{k}" for i in (1, 2) for k in COHORT_FIELDS)
+    + ", exist([a 'lifetimeData.mat'], 'file')};"
+)
+
+
+def run_cohorts_file_name(root, tracks: str, lifetime: str) -> list:
+    data = condition_data(root)
+    lt.run_lifetime_analysis(
+        data,
+        analysis_path="Analysis",
+        overwrite=True,
+        processed_tracks=tracks,
+        lifetime_data=lifetime,
+    )
+    coh = lt.plot_intensity_cohorts(data, analysis_path="Analysis", lft_data_name=lifetime)
+    a = os.path.join(data[0]["source"], "Analysis")
+    return [coh[i][k] for i in (0, 1) for k in COHORT_FIELDS] + [
+        2.0 if os.path.isfile(os.path.join(a, "lifetimeData.mat")) else 0.0
+    ]
+
+
 # the multiple-experiments demo: its frames (for the condition loader: the frame rate and the
 # movies' lengths) and the demo run's ProcessedTracks.mat, read and written in a copy
 DEMO = "$PETAKIT5D_DEMO_DATA/PetaKit5D_point_detection_demo_dataset"
@@ -472,6 +504,22 @@ def _lifetime_cases() -> list:
             python=run_file_names,
             inputs={"cond": Tree(make_renamed_condition, "cond")},
             compare=LIFETIME_SPEC,
+            files=False,
+            marks=("slow",),
+        )
+    )
+    cs.append(
+        Case(
+            "lifetime.cohorts_file_name",
+            code=COHORTS_FILE_CODE,
+            args=[InPath("cond"), *RENAMED],
+            nargout=len(COHORTS_FILE_OUT),
+            outputs=COHORTS_FILE_OUT,
+            python=run_cohorts_file_name,
+            inputs={"cond": Tree(make_renamed_condition, "cond")},
+            compare={
+                f"cohorts{i}.{k}": TOL_COHORT_ONE for i in (1, 2) for k in ("Amin", "Aplus", "A")
+            },
             files=False,
             marks=("slow",),
         )

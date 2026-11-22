@@ -14,6 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from petakit5d.detection.tracking.settings import TrackSettingsError
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import Case, In, Value, Work
 from petakit5d.testing.compare import MArray, MStruct
@@ -340,10 +341,11 @@ def _lap(cc, marker, extended):
     return (x + 1).astype(np.int32).reshape(-1, 1), (y + 1).astype(np.int32).reshape(-1, 1)
 
 
-def _settings(radius=None, gap=None):
+def _settings(radius=None, gap=None, **more):
+    """track_settings with the given options (``more``: gap_radius, link_radius, cost_type)"""
     from petakit5d.detection.tracking import track_settings
 
-    kw = {}
+    kw = dict(more)
     if radius is not None:
         kw["radius"] = radius
     if gap is not None:
@@ -496,12 +498,46 @@ def _cases():
         ("default", "", {}),
         ("radius_2_8_gap_4", "'Radius', [2 8], 'MaxGapLength', 4", {"radius": (2, 8), "gap": 4}),
         ("gap_1", "'MaxGapLength', 1", {"gap": 1}),
-    ):
+        # the two cost functions' radii: GapRadius the gap closing's, LinkRadius the linking's; a
+        # Radius that is not empty wins over both; the first two elements are read
+        ("gap_radius", "'GapRadius', [3 6]", {"gap_radius": (3, 6)}),
+        ("link_radius", "'LinkRadius', [2 4]", {"link_radius": (2, 4)}),
+        ("gap_and_link", "'GapRadius', [3 6], 'LinkRadius', [2 4]",
+         {"gap_radius": (3, 6), "link_radius": (2, 4)}),
+        ("radius_wins", "'Radius', [3 6], 'GapRadius', [1 2], 'LinkRadius', [7 8]",
+         {"radius": (3, 6), "gap_radius": (1, 2), "link_radius": (7, 8)}),
+        ("radius_empty_gap", "'Radius', [], 'GapRadius', [3 6]",
+         {"radius": (), "gap_radius": (3, 6)}),  # (an empty tuple: MATLAB's [], not None)
+        ("gap_three", "'GapRadius', [1 2 3]", {"gap_radius": (1, 2, 3)}),
+        ("gap_matrix", "'GapRadius', [1 2; 3 4]", {"gap_radius": ((1, 2), (3, 4))}),  # 1, 3
+        ("radius_three", "'Radius', [3 6 9]", {"radius": (3, 6, 9)}),
+        ("radius_gap_one", "'Radius', [3 6], 'GapRadius', 5", {"radius": (3, 6), "gap_radius": 5}),
+        ("gap_4_gap_radius", "'MaxGapLength', 4, 'GapRadius', [3 6]",
+         {"gap": 4, "gap_radius": (3, 6)}),
+        ("cost_upper", "'CostType', 'LINEAR'", {"cost_type": "LINEAR"}),
+    ):  # fmt: skip
         cs.append(
             Case(
                 f"track_settings.{name}",
                 code=f"out = {{loadTrackSettings({args})}};",
                 python=lambda kw=kw: _settings(**kw),
+            )
+        )
+    # a radius of fewer than two elements: MATLAB's indexing fails
+    for name, args, kw in (
+        ("gap_one", "'GapRadius', 5", {"gap_radius": 5}),
+        ("gap_empty", "'GapRadius', []", {"gap_radius": ()}),
+        ("link_one", "'LinkRadius', 5", {"link_radius": 5}),
+        ("radius_one", "'Radius', 5", {"radius": 5}),
+    ):
+        cs.append(
+            Case(
+                f"track_settings.{name}.error",
+                code=f"out = {{loadTrackSettings({args})}};",
+                python=lambda kw=kw: _settings(**kw),
+                expect_error="MATLAB:badsubscript",
+                py_error=TrackSettingsError,
+                error_text="withheld",
             )
         )
     return cs
