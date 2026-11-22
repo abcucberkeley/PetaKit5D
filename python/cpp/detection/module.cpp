@@ -463,7 +463,8 @@ struct FitResult {
 // start when A < 0 or A exceeds the data's range, or when the box cut the step to nothing; the
 // best record (A > 0 and a lower RSS, from the start's state) is the result; stops: the RSS drop
 // below 1e-7 of the first RSS with steps below 1e-4 (held on the box, the direction it was held
-// from), a drop below 1e-10, 31 iterations without a better record, max_iter iterations
+// from), an RSS change below 1e-6 in absolute value, 31 iterations without a better record,
+// max_iter iterations
 FitResult iterate(const Window &w, const FullWindow &W, State st, double s, double sz, int max_iter,
                   std::vector<double> &g, std::vector<double> &gt) {
     const int n = w.n;
@@ -561,8 +562,12 @@ FitResult iterate(const Window &w, const FullWindow &W, State st, double s, doub
             it++;
             break;
         }
-        const double drop = (rss - rss_new) / rss0;
-        if ((drop < 1e-7 && dp < 1e-4) || std::fabs(drop) < 1e-10) {
+        // the stop test (task C08, from MATLAB's traced iterations): the drop below 1e-7 of the
+        // first RSS with the step below 1e-4, or the RSS's change below 1e-6 in absolute value
+        // (an absolute bound: with a window and its start's A and c times a power of 2, which
+        // scales every RSS exactly, MATLAB stops elsewhere, as this test does)
+        const double drop = rss - rss_new;
+        if ((drop / rss0 < 1e-7 && dp < 1e-4) || std::fabs(drop) < 1e-6) {
             it++;
             break;
         }
