@@ -188,7 +188,7 @@ void eig_sym3(const double A[9], double w[3]) {
 struct Window {
     int n;  // valid voxels
     const double *d, *X, *Y, *Z;
-    double lo[3], hi[3];  // the box of the positions (min and max of X, Y, Z)
+    double lo[3], hi[3];  // the box: 0 (the window's first voxel) to the last valid voxel per axis
 };
 
 struct State {
@@ -461,8 +461,8 @@ struct FitResult {
 // the predicted decrease, at most 27 halvings), A and c by least squares; a switch to the next
 // start when A < 0 or A exceeds the data's range, or when the box cut the step to nothing; the
 // best record (A > 0 and a lower RSS, from the start's state) is the result; stops: the RSS drop
-// below 1e-7 of the first RSS with steps below 1e-4, a drop below 1e-10, 31 iterations without
-// a better record, max_iter iterations
+// below 1e-7 of the first RSS with steps below 1e-4 (held on the box, the direction it was held
+// from), a drop below 1e-10, 31 iterations without a better record, max_iter iterations
 FitResult iterate(const Window &w, const FullWindow &W, State st, double s, double sz, int max_iter,
                   std::vector<double> &g, std::vector<double> &gt) {
     const int n = w.n;
@@ -521,7 +521,10 @@ FitResult iterate(const Window &w, const FullWindow &W, State st, double s, doub
                 if (rt <= rss + 0.25 * lam * gd || nh >= 27) break;
                 lam /= 2;
             }
-            // positions within 1e-12 of the box are on it (where MATLAB's directions land)
+            // positions within 1e-12 of the box are on it (where MATLAB's directions land; MATLAB
+            // lands an ulp inside at times, and takes one more step there: not reproduced. On
+            // 23,969 traced fits, within 1e-12 of MATLAB: 23,510 so, 23,376 with positions put
+            // on the box only from beyond it, 23,273 without either; task C02d)
             bool snapped = false;
             for (int j = 0; j < 3; j++) {
                 pn[j] = trial[j];
@@ -539,8 +542,12 @@ FitResult iterate(const Window &w, const FullWindow &W, State st, double s, doub
         const double A1 = st.A;
         st.c = st.c + msum(n, [&](int i) { return (w.d[i] - A1 * gt[i]) - st.c; }) / n;
         const double rss_new = rss_of(w, gt, st.A, st.c);
+        // the step of the stop test: the position's move, or, held on the box (the step cut to
+        // nothing), the direction it was held from (a fit on the box goes on while A and c
+        // still move; task C02d)
         double dp = 0.0;
-        for (int j = 0; j < 3; j++) dp = std::max(dp, std::fabs(pn[j] - pstart[j]));
+        for (int j = 0; j < 3; j++)
+            dp = std::max(dp, std::fabs(!switched && alpha == 0 ? dv[j] : pn[j] - pstart[j]));
         std::memcpy(st.x, pn, sizeof(pn));
         g.swap(gt);
         if (st.A > 0 && rss_new < best_rss) {
@@ -604,9 +611,12 @@ void finish(const Window &w, const State &st, double rss_rep, double s, double s
     inverse(5, H5, C);
     for (int k = 0; k < 7; k++) pstd[k] = 0.0;
     const int idx[5] = {0, 1, 2, 3, 6};
+    // a negative diagonal entry (C of a fit that ends where the RSS is not convex, as on the
+    // box at a border plane) gives the magnitude of its complex root, as MATLAB's results
+    // have it (task C02d: the pstd of such fits, from MATLAB's own parameters, within 1e-9)
     for (int k = 0; k < 5; k++) {
         const double v = C[k * 5 + k] * rss_rep / (n - 6);
-        pstd[idx[k]] = v >= 0 ? std::sqrt(v) : std::numeric_limits<double>::quiet_NaN();
+        pstd[idx[k]] = std::sqrt(std::fabs(v));
     }
     prm[0] = st.x[0], prm[1] = st.x[1], prm[2] = st.x[2], prm[3] = st.A, prm[4] = s, prm[5] = sz,
     prm[6] = st.c;
@@ -665,8 +675,14 @@ void bind_fit_cd(f64_in vals, i64_in dims, f64_in p0, f64_out prm, f64_out pstd,
                 X.push_back((double)((q / ny) % nx));
                 Z.push_back((double)(q / (ny * nx)));
             }
-            Window w{(int)d.size(), d.data(), X.data(), Y.data(), Z.data(), {0, 0, 0},
-                     {(double)(nx - 1), (double)(ny - 1), (double)(nz - 1)}};
+            // the box: from the window's first voxel to its last valid one per axis (a window
+            // whose last planes are all NaN, as at the deskewed frame's empty wedges, keeps its
+            // fits off them, its first planes not; task C02d, MATLAB's traced fits)
+            Window w{(int)d.size(), d.data(), X.data(), Y.data(), Z.data(), {0, 0, 0}, {0, 0, 0}};
+            if (!d.empty()) {
+                const double *P3[3] = {X.data(), Y.data(), Z.data()};
+                for (int a = 0; a < 3; a++) w.hi[a] = *std::max_element(P3[a], P3[a] + d.size());
+            }
             const double *p = P0 + 7 * i;
             double *pr = PR + 7 * i, *ps = PS + 7 * i, *c5 = CC + 25 * i, *st = ST + 6 * i;
             if (w.n < 7) {

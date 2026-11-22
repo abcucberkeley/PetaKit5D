@@ -8,7 +8,9 @@ source read): bit for bit on 14 real frames when given MATLAB's detector and fit
 
 Per frame k (1-based) of the master channel (the channel whose folder is ``data['source']``):
 the DS frame as double with zeros as NaN; ``estimate_background(vol, k)``; the lowSNR detector
-with ``'BackgroundInfo' [bg, thr]`` (``thr`` the camera's residual threshold, 3 for the demo's);
+with ``'BackgroundInfo' [bg, cam]`` (``cam`` the camera threshold, 3 for the demo's) and the
+residual threshold of the frame's noise and ``cam`` (``residual_threshold``: the camera
+threshold for the demo's frames, the noise for a noisier frame, task C02d);
 then, for each other channel, ``'Ac'`` fits at the master's positions and ``'xyzAc'`` fits from
 them (default options: windows ``ceil(2 sigma)``, ``kLevel = norminv(0.975)``), and per entry
 the choice between them (``other_channel``).
@@ -23,6 +25,7 @@ other: docs/parity/detection.md D11, D12).
 
 from __future__ import annotations
 
+import math
 import os
 
 import numpy as np
@@ -39,8 +42,10 @@ __all__ = [
     "dmask_name",
     "frame_task",
     "frame_volume",
+    "residual_threshold",
     "run_detection",
     "run_detection_frame_parallel",
+    "runner_camera_threshold",
     "runner_sigma",
 ]
 
@@ -237,6 +242,46 @@ def camera_threshold(
     return float(NAN)
 
 
+def runner_camera_threshold(source: str | os.PathLike) -> float:
+    """the camera threshold as the runners take it: ``camera_threshold(source)``, or NaN when
+    the camera search stops with one of MATLAB's errors (no settings file above ``source``, or
+    one without a camera line): ``XR_runDetection3D`` goes on without a camera threshold then
+    (task C02d, probe r8d), with ``residual_threshold``'s noise. MATLAB's frame-parallel runner
+    stops with the error there instead (its bug of D13, which the port does not reproduce)."""
+    from petakit5d.core.dtypes import NAN
+
+    try:
+        return camera_threshold(source)
+    except CameraSettingsError:
+        return float(NAN)
+
+
+def residual_threshold(noise: float, camera: float) -> float:
+    """the residual sigma threshold the runners give the lowSNR detector for a frame
+    (``'ResidualSigmaThresh'``, which sets its candidates' filter and the bad-point filter's
+    ``thr``): from the frame's background noise (the third value of
+    ``XR_estimate_overall_background_information``) and the camera threshold
+    (``camera_threshold``). Measured as a black box (task C02d, probes r8a to r8c: the runners'
+    detector calls traced on frames of noise 1.5 to 111 with camera thresholds 3, 65 and none):
+    0.9 camera thresholds while the noise is below 1/1.5 of it (bounds measured between 0.662
+    and 0.682 of it), the camera threshold up to it, the noise above it up to 1.5 camera
+    thresholds (between 1.477 and 1.506), the camera threshold beyond. Without a camera
+    threshold (NaN: an unknown camera, or none found, ``runner_camera_threshold``) the noise,
+    as ``XR_runDetection3D`` has it since the fix of its dropped detections without one;
+    MATLAB's frame-parallel runner passes NaN there and so finds nothing, or stops with the
+    camera search's error, its bug, which the port does not reproduce (docs/parity/detection.md
+    D13). The values at exactly the bounds are not measured."""
+    noise, camera = float(noise), float(camera)
+    if math.isnan(camera):
+        return noise
+    if noise < camera / 1.5:
+        return 0.9 * camera
+    if noise > 1.5 * camera:
+        return camera
+    # MATLAB's max, which leaves NaN out
+    return camera if math.isnan(noise) else max(noise, camera)
+
+
 def frame_volume(raw) -> np.ndarray:
     """a DS frame as the runner uses it: double, zeros as NaN (MATLAB's)"""
     from petakit5d.core.dtypes import NAN
@@ -409,7 +454,7 @@ def detect_frame(
     sigma: np.ndarray,
     z_aniso: float,
     master: int = 0,
-    residual_sigma_threshold: float = 3.0,
+    camera_thr: float = 3.0,
     num_threads: int | None = None,
     *,
     detection_method: str = "lowSNR",
@@ -418,7 +463,9 @@ def detect_frame(
 ) -> tuple[dict, np.ndarray]:
     """``frameInfo`` entry and dmask of frame ``k`` (1-based; the background's seed) from the
     channels' DS frames ``vols`` (as read, (z, y, x)); ``detection_method`` 'lowSNR'
-    (``XR_pointSourceDetection3D_3`` after the background estimate) or 'speedup'
+    (``XR_pointSourceDetection3D_3`` after the background estimate, with the residual threshold
+    of the frame's noise and the camera threshold ``camera_thr`` (``residual_threshold``) and
+    ``'BackgroundInfo'`` the estimate and ``camera_thr``) or 'speedup'
     (``XR_pointSourceDetection3D``, redundancy radius 0.5, no background estimate);
     ``window``: the detector's ``WindowSize`` (empty: from sigma)"""
     from petakit5d.detection import detect as _d
@@ -445,8 +492,8 @@ def detect_frame(
             sig[master],
             window=window,
             background_correction=background_correction,
-            background_info=np.r_[bi, residual_sigma_threshold],
-            residual_sigma_threshold=residual_sigma_threshold,
+            background_info=np.r_[bi, camera_thr],
+            residual_sigma_threshold=residual_threshold(bi[2], camera_thr),
             num_threads=num_threads,
         )
     else:
@@ -634,8 +681,10 @@ def run_detection(
     settings are ``window_size`` empty, ``mode`` 'xyzAc' and ``fit_mixtures`` false
     (``max_mixtures`` matters only with mixtures). ``write_amira``: MATLAB's Amira writer fails
     and writes nothing; an empty ``Amira/Detection`` folder stays. ``frames``: only these frames
-    (1-based; the port's); ``residual_sigma_threshold``: by default the camera's, as MATLAB finds
-    it from the settings file above ``source`` (``camera_threshold``: 3 for sCMOS cameras).
+    (1-based; the port's); ``residual_sigma_threshold``: the camera threshold, by default as
+    MATLAB finds it from the settings file above ``source`` (``camera_threshold``: 3 for sCMOS
+    cameras; none, NaN, without such a file: ``runner_camera_threshold``); each frame's
+    detector gets the residual threshold of it and the frame's noise (``residual_threshold``).
     Returns per movie its ``frameInfo`` entries."""
     if sigma is None or np.size(sigma) == 0:
         raise ValueError("run_detection: give sigma (MATLAB asks for it interactively)")
@@ -705,7 +754,7 @@ def _run_movie(
     sel = range(1, nframes + 1) if frames is None else [int(f) for f in frames]
     thr = residual_sigma_threshold
     if thr is None:
-        thr = camera_threshold(data["source"])
+        thr = runner_camera_threshold(data["source"])
     masks = results_path + os.sep + "Masks"
     os.makedirs(masks, exist_ok=True)
     if write_amira:
@@ -906,11 +955,15 @@ def run_detection_frame_parallel(
     When every frame's file exists, ``Detection3D.mat`` is written from them (else the movie
     gives None); ``Detection3D.mat`` existing counts as all frames done.
 
-    Two differences from MATLAB (its quirks that are bugs; docs/parity/detection.md D11, D12):
-    ``overwrite`` true removes the movie's ``Detection3D.mat`` and per-frame files first, so
-    the frames are detected again (MATLAB keeps them and so ignores the flag); and a frame
+    Three differences from MATLAB (its quirks that are bugs; docs/parity/detection.md D11 to
+    D13): ``overwrite`` true removes the movie's ``Detection3D.mat`` and per-frame files first,
+    so the frames are detected again (MATLAB keeps them and so ignores the flag); a frame
     without detections gets the empty entry, as ``run_detection`` gives it (MATLAB's
-    frame-parallel runner repeats the previous frame's detections there).
+    frame-parallel runner repeats the previous frame's detections there); and without a camera
+    threshold (an unknown camera, or no settings file with a camera line above ``source``) the
+    frames are detected with their noise as the residual threshold, as ``run_detection`` does
+    (MATLAB's frame-parallel runner passes NaN and finds nothing, or stops with the camera
+    search's error).
 
     ``detection_method`` 'lowSNR' (what ``XR_runDetTrack3d`` passes) or 'speedup'; MATLAB's
     default 'update_1' runs ``XR_pointSourceDetection3D_1``, which is not ported. The other
@@ -1012,7 +1065,9 @@ def _run_movie_frame_parallel(
     sel = list(range(1, nframes + 1)) if frames is None else [int(f) for f in frames]
     thr = residual_sigma_threshold
     if thr is None:
-        thr = camera_threshold(data["source"])
+        # (MATLAB's frame-parallel runner stops on the camera search's errors and drops every
+        # detection without a camera threshold: D13; the port follows XR_runDetection3D)
+        thr = runner_camera_threshold(data["source"])
     final = results_path + "Detection3D.mat"
     outputs = [detections_file(results_path, k) for k in sel]
     if overwrite:

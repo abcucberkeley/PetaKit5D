@@ -13,7 +13,10 @@ The API for other stages (track processing reads amplitudes out with the same fi
 
 - ``fit_cd(windows, p0)``: batches of windows, each a ``(z, y, x)`` array (NaN: voxels left out),
   starting parameters ``[x y z A s sz c]`` in the window's 0-based coordinates; returns
-  ``FitCD`` arrays (one row per window).
+  ``FitCD`` arrays (one row per window). The positions are held from the window's first voxel
+  to its last valid one on each axis; a fit held there goes on while A and c move; standard
+  deviations of a negative entry on C's diagonal are the magnitude of the complex root (as
+  MATLAB's, task C02d; docs/parity/detection.md).
 - ``fit_gaussians3d(vol, xyz, A, sigma, c, ...)``: MATLAB's ``XR_fitGaussians3D`` on a volume.
 
 Positions are named: ``x`` along the array's last axis, ``y`` the middle one, ``z`` the first.
