@@ -539,7 +539,10 @@ def _as_number(v: Any) -> float:
         "maxlevel",
         None,
         "Folder levels below condDir searched for movies.",
-        accepts="empty | numeric & !scalar | numeric & nonnegative-whole",
+        accepts=(
+            "empty | numeric & nonnegative-whole"
+            " | numeric & !scalar & !empty & raises(MATLAB:nonLogicalConditional)"
+        ),
     ),
     Param("MovieSelector", None, "Text in a movie folder's name.", accepts="char"),
     Param(

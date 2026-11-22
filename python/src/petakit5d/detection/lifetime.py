@@ -49,7 +49,9 @@ in the demo's runs, and a mask file where ``MaskPath`` names it is refused.
 port's own checks of the options, made from MATLAB's accept and refuse behaviour; it takes
 ``AnalysisPath``, ``ProcessedTracks``, ``LifetimeData``, ``Overwrite`` and ``Display`` (measured:
 the numbers and the two printed values are the same with 'off'), every other option at its
-default only (``NotImplementedError`` otherwise). The figures are left out.
+default only (``NotImplementedError`` otherwise). ``plot_intensity_cohorts`` is registered the
+same way; it takes ``AnalysisPath`` (measured with another folder on the demo data) and every
+other option at its default only. The figures are left out.
 """
 
 from __future__ import annotations
@@ -810,7 +812,7 @@ _UB = (10, 15, 20, 40, 60, 120)
     "runLifetimeAnalysis3D",
     # third-party code (its header names an outside author): its interface, with the port's own
     # checks (accepts=) made from MATLAB's behaviour (tests/params/test_third_party_checks.py:
-    # an error of a check's own, not inputParser's, counts as taken, e.g. Display's cells of
+    # raises(...) where MATLAB's check raises an error of its own, e.g. for Display's cells of
     # other than one element); the options the port takes at their defaults only raise
     # NotImplementedError otherwise
     Param("data", None, "Movies (the structure XR_loadConditionData3D returns).", convert="same"),
@@ -820,9 +822,14 @@ _UB = (10, 15, 20, 40, 60, 120)
         "Display",
         None,
         "Figures, 'on' or 'off' (the port makes none).",
-        accepts="in(off,on) | cell & !numel(1)",
+        accepts="in(off,on) | cell & !numel(1) & raises(MATLAB:strcmp:InputsSizeMismatch)",
     ),
-    Param("DisplayMode", None, "Figures' mode (the default only).", accepts="in(print,screen)"),
+    Param(
+        "DisplayMode",
+        None,
+        "Figures' mode (the default only).",
+        accepts="in(print,screen) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
     Param("AnalysisPath", None, "Analysis folder in each movie's source folder.", accepts="char"),
     Param("ProcessedTracks", None, "Track file in the analysis folder.", accepts="char"),
     Param("LifetimeData", None, "Lifetime data file in the analysis folder.", accepts="char"),
@@ -861,7 +868,12 @@ _UB = (10, 15, 20, 40, 60, 120)
         matlab_default="jet(numel(data))",
     ),
     Param("CorrectObservationBias", None, "Not ported: true only.", accepts="logical"),
-    Param("InitDensity", None, "Not ported: the default only.", accepts="in(mean,median)"),
+    Param(
+        "InitDensity",
+        None,
+        "Not ported: the default only.",
+        accepts="in(mean,median) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
     Param("AmplitudeCorrection", None, "Not ported: [] only."),
     Param(
         "MaskPath",
@@ -874,7 +886,13 @@ _UB = (10, 15, 20, 40, 60, 120)
         "Binning",
         None,
         "Not ported: the default only.",
-        accepts="numeric & scalar & positive-whole | cell | struct | string | handle",
+        accepts=(
+            "numeric & scalar & positive-whole"
+            " | string & raises(MATLAB:string:ComparisonNotDefined)"
+            " | cell & raises(MATLAB:UndefinedFunction)"
+            " | struct & raises(MATLAB:UndefinedFunction)"
+            " | handle & raises(MATLAB:UndefinedFunction)"
+        ),
     ),
     task="C05",
 )
@@ -1105,11 +1123,116 @@ def _quartiles(M: np.ndarray, nt: int):
 # -- plotIntensityCohorts --------------------------------------------------------------------------
 
 
+@register(
+    "plotIntensityCohorts",
+    # third-party code (its header names an outside author): its interface, with the port's own
+    # checks (accepts=) made from MATLAB's behaviour (tests/params/test_third_party_checks.py;
+    # MATLAB took every probe of data at its parse, so data has none); the options the port
+    # takes at their defaults only raise NotImplementedError otherwise
+    Param("data", None, "Movies (the structure XR_loadConditionData3D returns).", convert="same"),
+    Param("ch", None, "Channels (the default only: all).", matlab_default="nCh:-1:1"),
+    Param("Overwrite", None, "Not ported: false only.", accepts="logical"),
+    Param("CohortBounds_s", None, "Not ported: the default only (the cohorts' bounds, s)."),
+    Param("ShowVariation", None, "Not ported: true only.", accepts="logical"),
+    Param(
+        "FillMode",
+        None,
+        "Not ported: the default only.",
+        accepts="in(SEM) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
+    Param("FrontLayer", None, "Not ported: false only.", accepts="logical"),
+    Param("ShowBackground", None, "Not ported: false only.", accepts="logical"),
+    Param("Rescale", None, "Not ported: true only (the movies are scaled).", accepts="logical"),
+    Param(
+        "RescalingReference",
+        None,
+        "Not ported: the default only.",
+        accepts="in(med) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
+    Param("ScaleSlaveChannel", None, "Not ported: true only.", accepts="logical"),
+    Param("ScalingFactor", None, "Not ported: [] only.", accepts="numel(2)"),
+    Param("MaxIntensityThreshold", None, "Not ported: the default only."),
+    Param(
+        "ExcludeVisitors",
+        None,
+        "Not ported: true only (the visitors are left out).",
+        accepts="logical",
+    ),
+    Param("SlaveName", None, "Not ported: [] only.", accepts="cell"),
+    Param("ChannelNames", None, "Not ported: [] only."),
+    Param("LineStyle", None, "Figures' line style (the default only)."),
+    Param("Hues", None, "Figures' hues ([] only)."),
+    Param("Colormap", None, "Figures' colors ([] only)."),
+    Param("ColormapFill", None, "Figures' fill colors ([] only)."),
+    Param("DisplayMode", None, "Figures' mode (the default only)."),
+    Param("DisplayAll", None, "Not ported: false only."),
+    Param("TrackIndex", None, "Not ported: [] only."),
+    Param("Cutoff_f", None, "Not ported: the default only (5 frames)."),
+    Param("Alpha", None, "Not ported: the default only."),
+    Param("YTick", None, "Figures' ticks ([] only)."),
+    Param("YLim", None, "Figures' limits ([] only)."),
+    Param("Parent", None, "Figures' parent ([] only)."),
+    Param("RemoveOutliers", None, "Not ported: false only.", accepts="logical"),
+    Param("PlotXLabel", None, "Not ported: true only.", accepts="logical"),
+    Param("ShowPct", None, "Not ported: true only.", accepts="logical"),
+    Param("ShowStats", None, "Not ported: true only.", accepts="logical"),
+    Param(
+        "AvgFun",
+        None,
+        "Not ported: the default only (the mean of the values that are not NaN).",
+        matlab_default="@nanmean",
+        accepts="handle",
+    ),
+    Param("LftDataName", None, "Not ported: the default only (lifetimeData.mat)."),
+    Param("AmplitudeCorrection", None, "Not ported: [] only."),
+    Param(
+        "Align",
+        None,
+        "Not ported: the default only.",
+        accepts="in(left,right) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
+    Param("AnalysisPath", None, "Analysis folder in each movie's source folder.", accepts="char"),
+    task="C05",
+)
 def plot_intensity_cohorts(
     data,
+    ch=None,
     *,
+    overwrite: bool = False,
+    cohort_bounds_s=INTENSITY_BOUNDS,
+    show_variation: bool = True,
+    fill_mode: str = "SEM",
+    front_layer: bool = False,
+    show_background: bool = False,
+    rescale: bool = True,
+    rescaling_reference: str = "med",
+    scale_slave_channel: bool = True,
+    scaling_factor=None,
+    max_intensity_threshold: float = 0.0,
+    exclude_visitors: bool = True,
+    slave_name=None,
+    channel_names=None,
+    line_style: str = "-",
+    hues=None,
+    colormap=None,
+    colormap_fill=None,
+    display_mode: str = "screen",
+    display_all: bool = False,
+    track_index=None,
+    cutoff_f: int = COHORT_CUTOFF_F,
+    alpha: float = 0.05,
+    y_tick=None,
+    y_lim=None,
+    parent=None,
+    remove_outliers: bool = False,
+    plot_x_label: bool = True,
+    show_pct: bool = True,
+    show_stats: bool = True,
+    avg_fun=None,
+    lft_data_name: str = "lifetimeData.mat",
+    amplitude_correction=None,
+    align: str = "left",
     analysis_path: str = "Analysis",
-    lifetime_data: str = "lifetimeData.mat",
 ) -> list[dict]:
     """MATLAB's ``cohorts = plotIntensityCohorts(data, 'AnalysisPath', analysis_path)`` (module
     docstring; the figure left out): one dict per significance combination of the other channel
@@ -1117,11 +1240,53 @@ def plot_intensity_cohorts(
     (channels x cohorts object arrays of rows). Reads the lifetimeData.mat files (it writes them
     first where they are missing). With one movie, ``A`` is the median of the tracks and
     ``Amin``, ``Aplus`` their 25th and 75th percentiles (MATLAB's other branch, measured).
-    ``data`` as ``run_lifetime_analysis`` takes it. Not registered: plotIntensityCohorts is
-    third-party code outside the stored inputParser extract."""
+    ``data`` as ``run_lifetime_analysis`` takes it. Registered with MATLAB's interface (names,
+    order, defaults) and the port's own checks of the options; it takes ``analysis_path``, every
+    other option at its default only (``NotImplementedError`` otherwise)."""
     from petakit5d.matlabcompat import reduce as mr
     from petakit5d.matlabcompat import stats as ms
 
+    for name, value, default in (
+        ("ch", ch, None),
+        ("Overwrite", overwrite, False),
+        ("CohortBounds_s", cohort_bounds_s, INTENSITY_BOUNDS),
+        ("ShowVariation", show_variation, True),
+        ("FillMode", fill_mode, "SEM"),
+        ("FrontLayer", front_layer, False),
+        ("ShowBackground", show_background, False),
+        ("Rescale", rescale, True),
+        ("RescalingReference", rescaling_reference, "med"),
+        ("ScaleSlaveChannel", scale_slave_channel, True),
+        ("ScalingFactor", scaling_factor, None),
+        ("MaxIntensityThreshold", max_intensity_threshold, 0.0),
+        ("ExcludeVisitors", exclude_visitors, True),
+        ("SlaveName", slave_name, None),
+        ("ChannelNames", channel_names, None),
+        ("LineStyle", line_style, "-"),
+        ("Hues", hues, None),
+        ("Colormap", colormap, None),
+        ("ColormapFill", colormap_fill, None),
+        ("DisplayMode", display_mode, "screen"),
+        ("DisplayAll", display_all, False),
+        ("TrackIndex", track_index, None),
+        ("Cutoff_f", cutoff_f, COHORT_CUTOFF_F),
+        ("Alpha", alpha, 0.05),
+        ("YTick", y_tick, None),
+        ("YLim", y_lim, None),
+        ("Parent", parent, None),
+        ("RemoveOutliers", remove_outliers, False),
+        ("PlotXLabel", plot_x_label, True),
+        ("ShowPct", show_pct, True),
+        ("ShowStats", show_stats, True),
+        ("AvgFun", avg_fun, None),
+        ("LftDataName", lft_data_name, "lifetimeData.mat"),
+        ("AmplitudeCorrection", amplitude_correction, None),
+        ("Align", align, "left"),
+    ):
+        if not _is_default(value, default):
+            raise NotImplementedError(
+                f"plot_intensity_cohorts: {name} {value!r}: only the default is ported"
+            )
     data = _movies(data)
     framerate = float(data[0]["framerate"])
     lft = get_lifetime_data(
@@ -1132,7 +1297,7 @@ def plot_intensity_cohorts(
         cutoff_f=COHORT_CUTOFF_F,
         scale=True,
         analysis_path=analysis_path,
-        lifetime_data=lifetime_data,
+        lifetime_data=lft_data_name,
     )
     nch = lft[0]["A"].shape[2]
     b = lft[0]["sbA"].shape[1]

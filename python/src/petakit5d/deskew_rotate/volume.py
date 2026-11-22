@@ -583,7 +583,12 @@ def _as_input(vol: Any) -> np.ndarray:
     Param("xyPixelSize", None, "Pixel size."),
     Param("reverse", None, "Reverse scan direction.", accepts="logical"),
     Param("Crop", None, "Crop half of the empty triangles in x.", accepts="logical"),
-    Param("Interp", None, "Interpolation: 'linear' or 'cubic'.", accepts="in(cubic,linear)"),
+    Param(
+        "Interp",
+        None,
+        "Interpolation: 'linear' or 'cubic'.",
+        accepts="in(cubic,linear) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
     task="D02",
     matlab_out=_volume_to_matlab,
 )
@@ -699,7 +704,12 @@ def _crop_out_size(
         convert="size_yxz",
         accepts="numeric",
     ),
-    Param("Interp", None, "Interpolation: 'linear' or 'cubic'.", accepts="in(cubic,linear)"),
+    Param(
+        "Interp",
+        None,
+        "Interpolation: 'linear' or 'cubic'.",
+        accepts="in(cubic,linear) | cell & empty & raises(MATLAB:strcmp:InputsSizeMismatch)",
+    ),
     task="D02",
     matlab_out=_volume_to_matlab,
 )

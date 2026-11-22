@@ -562,7 +562,7 @@ def test_saved_file_reads_back(tmp_path):
     frames = movie_dense()
     tracks, kal = track_detections(frames)
     fn = str(tmp_path / "trackedFeatures.mat")
-    write_tracked_features(fn, track_settings((3, 6), 2), tracks, kal)
+    write_tracked_features(fn, track_settings(radius=(3, 6), max_gap_length=2), tracks, kal)
     m = read_mat(fn)
     assert list(m) == [
         "costMatrices",
