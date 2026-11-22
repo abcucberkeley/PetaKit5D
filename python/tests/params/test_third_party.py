@@ -37,6 +37,7 @@ THIRD_PARTY_FUNCTIONS = {
     "plotIntensityCohorts",  # the same (CMEAnalysis' copy, the one that runs)
     "loadTrackSettings",  # the same (CMEAnalysis' copy, the one that runs)
     "deskewData",  # its header names an outside author
+    "rotateTracks3D",  # its header names an outside author (cmeAnalysis)
 }
 
 LLSM = "an outside-author folder (llsmtools)"
@@ -512,6 +513,8 @@ def test_every_option_of_plot_intensity_cohorts_but_its_ported_ones_is_guarded()
         ("deskewData", "petakit5d.detection.wrapper.deskew_data", True),
         ("loadTrackSettings", "petakit5d.detection.tracking.settings.track_settings", True),
         ("XR_correctXZoffsetData3D", "petakit5d.detection.offsets.correct_xz_offset_data", False),
+        ("rotateTracks3D", "petakit5d.detection.processing.rotate_tracks", True),
+        ("GU_estimateSigma3D", "petakit5d.detection.sigma.estimate_sigma3d", False),
     ],
 )
 def test_the_detection_helpers_are_registered(extract, name, python, third):
@@ -601,3 +604,52 @@ def test_track_settings_takes_matlabs_name_value_options():
         track_settings((3, 6), 2)
     got = find("loadTrackSettings").call_matlab("Radius", [3.0, 6.0], "MaxGapLength", 1.0)
     np.testing.assert_equal(got, track_settings(radius=(3, 6), max_gap_length=1))
+
+
+@pytest.mark.parametrize(
+    ("name", "value"), [("processed_tracks", "other.mat"), ("rotated_tracks_file", "other.mat")]
+)
+def test_rotate_tracks_takes_its_file_names_at_their_defaults_only(name, value):
+    from petakit5d.detection.processing import rotate_tracks
+
+    with pytest.raises(NotImplementedError, match="only the default is ported"):
+        rotate_tracks({"source": "movie_missing/"}, crop=False, **{name: value})
+
+
+def test_rotate_tracks_takes_matlabs_default_crop_which_is_not_ported():
+    from petakit5d.detection.processing import rotate_tracks
+    from petakit5d.params import find
+
+    assert find("rotateTracks3D").param("crop").default is True
+    with pytest.raises(NotImplementedError, match="'Crop' true is not ported"):
+        rotate_tracks({"source": "movie_missing/"})
+
+
+def test_estimate_sigma3d_in_matlabs_form(monkeypatch):
+    """GU_estimateSigma3D's interface: rt and FileName by position ([rt FileName]); the
+    MATLAB-name layer gives XYZ and the detections 1-based and the mask in MATLAB's layout"""
+    import numpy as np
+
+    from petakit5d.detection import detect, sigma
+    from petakit5d.params import find
+
+    seen = []
+    monkeypatch.setattr(sigma, "psf_volume", lambda p: seen.append(p) or np.ones((4, 5, 6)))
+    ps = {
+        "A": np.array([1.0, 3.0]),
+        "s": np.array([[1.3, 1.4], [2.1, 2.2]]),
+        "x": np.array([4.0, 5.0]),
+        "y": np.array([6.0, 7.0]),
+        "z": np.array([2.0, 3.0]),
+    }
+    mask = np.zeros((4, 5, 6), dtype=bool)
+    mask[1, 2, 3] = True
+    monkeypatch.setattr(detect, "point_source_detection_speedup", lambda *a, **k: (ps, mask))
+    sxy, sz, xyz, got, m = sigma.estimate_sigma3d("beads/", "psf.tif")
+    assert seen[-1] == "beads/psf.tif" and (sxy, sz) == (1.4, 2.2)
+    assert xyz == {"x": 5.0, "y": 7.0, "z": 3.0} and m is mask
+    out = find("GU_estimateSigma3D").call_matlab("beads/psf.tif", [])
+    assert seen[-1] == "beads/psf.tif"
+    assert out[:3] == (1.4, 2.2, {"x": 6.0, "y": 8.0, "z": 4.0})
+    np.testing.assert_array_equal(out[3]["x"], [[5.0, 6.0]])
+    assert out[4].shape == (5, 6, 4) and out[4][2, 3, 1]

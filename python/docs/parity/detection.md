@@ -5,7 +5,7 @@ The port matches MATLAB bit for bit unless an oracle case declares a tolerance
 tolerances of `petakit5d.detection`, with what was measured and why the bits differ.
 Each case's `reason` names its row as `detection_scope.md statistics Sn` (the scope document
 has the same rows). All rows were approved by the user on 2026-11-20
-([index.md](index.md)).
+([index.md](index.md)), but D13, proposed (2026-11-21).
 
 ## Statistics functions (`detection.stats`, C01)
 
@@ -133,7 +133,7 @@ on one frame (D10).
 
 | Row | What | Measured (largest) | Tolerance | Cause |
 |---|---|---|---|---|
-| D10 | 'lowSNR' without the background correction (`XR_runDetTrack3d`'s default detection): `run_detection_frame_parallel` against `XR_runDetection3D_frame_parallel` on the demo's 60 frames, both channels | 53 frames with MATLAB's number of detections, 41 of them with every position within 1e-6 (the others: one or two fits apart, D3); of MATLAB's 61,260 detections 61,218 matched, the port has 61,290; frames 1, 33 and 55: 1, 9 and 1 detections differ, from the fits (with MATLAB's own points the port's filter keeps MATLAB's set on 56 of the 60 frames, probe lt4); frames 17, 21, 50 and 51: 19, 3, 25 and 14 detections, from the filter's open rules (the smoothing choice of line 104 on 17, 50 and 51: with that line's median mocked from 5 to 60, MATLAB smooths frame 17 with medfilt1 and frame 50 with conv at every value, frame 51 with conv only at 5, so the choice does not follow that median alone, and no rule of one quantity against it fits the 1,386 recorded and designed calls, the best 1,259; B's median bound on 21: 103 candidates, median count 8, MATLAB takes it with U 9 or 10); matched values: the master's positions within 3.4e-10 relative, A 9.1e-5, the other channel's A 0.27 (a few refits). Re-measured after the filter's few-point rules and line 160's bound (C02c's follow-up, job 4636924): the same counts on every frame (camera threshold 3, about 1,000 points a frame: none of those rules changes these calls) | none on the oracle cases (bit for bit); demo frames: listed | D3 (a restarted fit that moved 2.9 voxels and stopped 2.9e-4 away on frame 1, replayed from MATLAB's own window and start), which the filter's histogram and neighbour counts pass on; the filter's smoothing choice and B's bound (measured on the frames with the background correction) |
+| D10 | 'lowSNR' without the background correction (`XR_runDetTrack3d`'s default detection): `run_detection_frame_parallel` against `XR_runDetection3D_frame_parallel` on the demo's 60 frames, both channels | 53 frames with MATLAB's number of detections, 41 of them with every position within 1e-6 (the others: one or two fits apart, D3); of MATLAB's 61,260 detections 61,218 matched, the port has 61,290; frames 1, 33 and 55: 1, 9 and 1 detections differ, from the fits (with MATLAB's own points the port's filter keeps MATLAB's set on 56 of the 60 frames, probe lt4); frames 17, 21, 50 and 51: 19, 3, 25 and 14 detections, from the filter's open rules (the smoothing choice of line 104 on 17, 50 and 51: with that line's median mocked from 5 to 60, MATLAB smooths frame 17 with medfilt1 and frame 50 with conv at every value, frame 51 with conv only at 5, so the choice does not follow that median alone, and no rule of one quantity against it fits the 1,386 recorded and designed calls, the best 1,259; B's median bound on 21: 103 candidates, median count 8, MATLAB takes it with U 9 or 10); matched values: the master's positions within 3.4e-10 relative, A 9.1e-5, the other channel's A 0.27 (a few refits). Re-measured after the filter's few-point rules and line 160's bound (C02c's follow-up, job 4636924): the same counts on every frame (camera threshold 3, about 1,000 points a frame: none of those rules changes these calls). Re-measured with C02d's rules (the runners' residual threshold, the fits' box and stop test, the standard deviations of a negative diagonal, line 104's dip; job 4637860): 59 frames with MATLAB's number of detections, 42 of them with every detection matched; of MATLAB's 61,260 detections 61,239 matched, the port has 61,263; frames 1, 17, 33, 50, 51 and 55 now as MATLAB's, frame 21 (B's median bound) 982 against 979 | none on the oracle cases (bit for bit); demo frames: listed | D3 (a restarted fit that moved 2.9 voxels and stopped 2.9e-4 away on frame 1, replayed from MATLAB's own window and start), which the filter's histogram and neighbour counts pass on; the filter's smoothing choice and B's bound (measured on the frames with the background correction) |
 | D11 | `run_detection_frame_parallel(..., overwrite=True)` when `Detection3D.mat` or per-frame files exist | MATLAB keeps them (its job framework counts existing outputs as done, so `Overwrite` true changes nothing: probes fp1-fp3) | none: the port removes them first and detects every frame again, as `XR_runDetection3D` and the lab's other wrappers do with `Overwrite` | MATLAB's bug (an option ignored), fixed in the port |
 | D12 | a frame without detections in `run_detection_frame_parallel` | MATLAB's entry repeats the session's previous frame's detections (with the frame's own `dRange`; probe fp3) | none: the port gives the empty entry, as `XR_runDetection3D` does | MATLAB's bug (a wrong result), fixed in the port |
 
@@ -194,6 +194,64 @@ only, no source read; 118 calls on few points, 318 designed histograms for line 
   neither counted nor set the edges; with no finite value the edges are 0 to nbins. Bins
   narrower than about 1000 ulp of the value (`1e15 + 0.25` with 13 bins or more) are refused:
   MATLAB widens its limits there, not measured.
+
+## The runners' residual threshold, the fits at the box, line 104's smoothing (C02d)
+
+Measured the same way (traced calls with full values, line numbers, designed and recorded
+inputs; no GPL or MathWorks source read), on the multiple-experiments demo's frames and
+synthetic ones. These were the causes of the demos' differences in detection (phase3.md's rows
+2, 8 and 10):
+
+- **The runners' residual threshold:** `XR_runDetection3D` and
+  `XR_runDetection3D_frame_parallel` give the detector a `ResidualSigmaThresh` of their own per
+  frame, from the frame's noise (`BackgroundInfo(3)`, the third value of
+  `XR_estimate_overall_background_information`) and the camera threshold: 0.9 camera
+  thresholds while the noise is below 1/1.5 of it (the bound measured between 0.662 and 0.682
+  camera thresholds), the camera threshold up to it, the noise up to 1.5 camera thresholds
+  (between 1.477 and 1.506), the camera threshold beyond (92 frames of the demo and of
+  synthetic conditions, camera thresholds 3 and 65, both runners; the values at exactly the
+  bounds are not measured). The port gave the camera threshold always; now
+  `run.residual_threshold`. Without a camera threshold (no settings file above the source, none
+  with a camera line: the camera search's errors, which `XR_runDetection3D` catches; or a camera
+  it does not know) `XR_runDetection3D` takes the noise, with NaN as `BackgroundInfo(4)`; the
+  frame-parallel runner: D13.
+- **The fits' box** (`XR_fitGaussian3D`'s CD_Newton, the port's `fit.fit_cd`): the positions are
+  held from the window's first voxel to its last valid one on each axis, so a window whose last
+  planes are NaN (the deskewed frame's empty wedge) keeps its fit off them, while NaN first
+  planes do not move the box's start (the port held the fits in the whole window). A fit held
+  on the box (its step cut to nothing, no start left to switch to) goes on while its amplitude
+  and background still move: the stop test's step is the direction it was held from (the
+  port's was the position's move, 0 there). On 23,969 traced fits (8 frames of the first two
+  experiments and C02's probe 14) the port's results within 1e-12 of MATLAB's: 23,171 before,
+  23,510 after (beyond 1e-3: 79, 69). MATLAB's cut steps land an ulp inside the box at times and
+  take one more step there before they switch; the port puts a position within 1e-12 of the box
+  on it (with positions put on the box only from beyond it: 23,376; without either: 23,273).
+- **The standard deviations of a fit with a negative entry on its covariance's diagonal** (a fit
+  that ends on the box where the RSS is not convex): MATLAB gives the magnitude of the complex
+  root, `sqrt(|C_kk| RSS / (n - 6))`; the port gave NaN, which made the amplitude test's
+  p-value NaN and dropped the detection (row 2's two detections). With the magnitude the port's
+  `hval_Ar` is MATLAB's on all 14,673 fits evaluated at MATLAB's final positions.
+- **Line 104's smoothing choice** (`badpoints.spike`, `badpoints.dip`): conv when the largest of
+  the first three bins is a spike above the median of the list's counts (both neighbours below
+  0.75 of it), or when medfilt1 raises one of the first three bins by more than that median;
+  else medfilt1. MATLAB's choice on 1,456 of the 1,479 recorded, designed and mocked calls that
+  reach the line, all 64 of the demo frames' calls replayed (the spike rule alone 1,453, C02's
+  rule 1,168); the misses: 21 designed histograms with a spike in bin 3 (20 of C02c's grid, where
+  MATLAB takes conv only when bin 1 is above bin 2), and 2 of C02c's mocked medians. The rule is measured, not
+  known. Its oracle cases (`demo.smoothing.*`, with the demo data) give both sides the
+  filter's inputs the port's detector makes of the second experiment's frame 16, which the spike
+  decides (23 points apart from C02's rule's keep mask), and of the third's frames 27 and 40,
+  which the dip decides (5 and 3 points apart from the spike rule's): MATLAB's keep masks.
+- **The results:** the multiple demo's 180 frames (the master channel on MATLAB's DS frames with
+  MATLAB's sigmas): the frames whose detections differ, 2, 21 and 10 per experiment before, 0,
+  3 and 1 after (the first experiment: 2 detections only MATLAB has before, none after; the
+  second: 12 and 102 before, 2 and 1 after; the third: 7 and 28 before, 1 and 0 after); the 4
+  left are fits that take another path (D3). D10's frames: 59 of 60 with MATLAB's detections
+  (53 before).
+
+| Row | What | Measured (largest) | Tolerance | Cause |
+|---|---|---|---|---|
+| D13 | `XR_runDetection3D_frame_parallel` without a camera threshold | without a settings file above the source, or with one without a camera line, MATLAB's runner stops with the camera search's error (`MATLAB:subsdeldimmismatch`, `MATLAB:TooManyOutputsDueToMissingBraces`); with a camera it does not know, it passes NaN as `ResidualSigmaThresh` and every detection is filtered out (probe r8d: 9 and 8 detections with `XR_runDetection3D`, none with the frame-parallel runner) | none: the port's frame-parallel runner takes the noise, as `XR_runDetection3D` does (which catches the camera search's errors) | MATLAB's bug (an error or no detections where its other runner gives them), fixed in the port |
 
 ## Tracking (`detection.tracking`, C03)
 
@@ -295,12 +353,27 @@ frames before, loops, two branches, gaps, a join whose overlap frame needs the i
 same join with a branch split off the merging segment, a structure over the whole movie, the movie's
 first and last frames): every field but those of W11 and W12, in both files.
 
+The multiple-experiments demo's three experiments, each processed on MATLAB's detections, tracks,
+masks and frames (C04c, 2026-11-21): the same tracks (3,636, 6,553 and 5,193), every category
+(15,382 of 15,382, since the buffer test's intensity rule of W14), the keep-or-refit decision of
+171,923 of the 171,926 gap and buffer fits (the three others W13's), and, recorded from MATLAB on
+the 239 tracks whose fits differ, every read-out window (values and the masked voxels) and every
+start of those tracks' 4,320 fits bit for bit. The oracle cases `run.buffers` (spots in the
+farthest buffer frames whose amplitude and intensity compare with the track's the other way round),
+`run.empty` (every track dropped: MATLAB's files without tracks, row 9 of [phase3.md](phase3.md)),
+`run.late` (the first frames without detections: MATLAB's tracks keep every channel's row, where
+the port took the channels from the first frame's detections and failed on tracks with gaps) and
+`run.demo_cut` (the demo's frames 41 to 60 of its first experiment around a track whose buffers
+the amplitudes and the intensities decide the other way round, deskewed as the demos deskew them
+and cut to 52 x 51 voxels, with the 55 tracks of a MATLAB run of the multiple-experiments demo
+that lie in them): every field but those of W11 and W12, in both files.
+
 | Row | What | Measured (largest) | Tolerance | Cause |
 |---|---|---|---|---|
 | W11 | the fits at the gap frames and in the buffers: x, y, z, A, c, A_pstd, c_pstd, sigma_r, SE_sigma_r; what follows from them: `MotionAnalysis.MSD` and `MSDstd`, the rotated x and z, the end buffer's `Y` | demo: 80% (A) to 99.8% (x) of the 83,976 gap-frame values bit for bit, all but W13's within 1e-11 of max(\|v\|, 1); `run.designed` within 2.4e-13 | `rel` 1e-11 with `abs` 1e-10 (`TRACKS_TOL` of `tests/detection/test_processing.py`, on both track files) | the free fits' last bits (D3: `fit_cd`) and the refits' (D4: the mex's `'Ac'`); the tolerance is inside D3's |
 | W12 | `pval_Ar` of the gap frames and buffers | demo: 2.8e-13 (absolute), 82,139 of 83,976 gap-frame values bit for bit; `run.designed` bit for bit | `abs` 1e-10 (the same `TRACKS_TOL`) | the Welch test's degrees of freedom in another order (91% bit for bit even from MATLAB's own fits), `tcdf` (S3), and W11 |
-| W13 | the demo's fits that take another path | 25 of 42,412 windows (11 gap frames, 6 start-buffer and 8 end-buffer frames): positions to 2.8e-4, A to 1.6e-2 relative (a small amplitude), MSD and MSDstd of their tracks (50 of 18,866 values) to 1.2e-4 | none on the oracle case; demo: listed | the fits' last bits change a fit's iterations (D3) |
-| W14 | `catIdx` | demo: 4 of 3,636 tracks differ (1849 and 2968, single tracks whose buffer decision MATLAB makes the other way; 2181 and 2322, single five-frame tracks with gaps that MATLAB puts in category 2); 717 of 717 probe tracks and both oracle cases equal | none | the categories' rules were measured, not read; these four cases follow no rule found |
+| W13 | the demos' fits that take another path | the by-step demo: 25 of 42,412 windows (11 gap frames, 6 start-buffer and 8 end-buffer frames): positions to 2.8e-4, A to 1.6e-2 relative (a small amplitude), MSD and MSDstd of their tracks (50 of 18,866 values) to 1.2e-4. The multiple-experiments demo on MATLAB's inputs (proposed addition, 2026-11-21): 25, 185 and 37 of its experiments' 42,412, 71,360 and 58,154 windows, in 25, 178 and 36 tracks; all but three within 9.1e-4 voxels and A within 5.0e-3 relative; in those three (a gap frame of the second experiment's channel 2, an end-buffer frame of its channel 2, a gap frame of the third experiment's channel 1) the two free fits end on either side of the keep rule's 2 voxels, so one side keeps its free fit where the other refits at the given position: positions 1.33, 1.77 and 1.04 voxels and A 40%, 63% and 37% relative apart, the third's track's MSD 0.064 relative | none on the oracle cases; the demos: listed | the free fits (D3: `fit_cd`) end elsewhere than MATLAB's on the same windows and starts. Of the 4,320 fits of the 239 tracks above, recorded from MATLAB (every window and start bit for bit), 465 free fits end beyond 1e-9 of MATLAB's, weak spots mostly (median \|A\| 3.7, three quarters below 10; 221 of them refitted at the given position, which hides the difference): in 290 MATLAB's end is `fit_cd`'s iterate one iteration before `fit_cd` stops (`fit_cd` with one iteration fewer gives it to 1e-12), and 182 end elsewhere, the three whose decision changes among them, one side's free fit on a face of the window (`fit_cd`'s twice, MATLAB's once), the other's inside it. Not the inputs' last bits: with the window or the start changed by 1 to 3 ulp, 5 of the 465 ends move, 1 to MATLAB's. Reported to the fits' owner |
+| W14 | `catIdx` | none: every category equal (the by-step demo's 3,636 tracks, the multiple-experiments demo's 3,636, 6,553 and 5,193 on MATLAB's inputs, 717 probe tracks, the six oracle cases `run.*`) | none | fixed 2026-11-21 (C04c; was 4 of the by-step demo's tracks, and 11 and 19 of the multiple demo's second and third experiments): the buffer test compares a buffer frame's intensity, `A + c`, with the track's largest `A + c` over all its columns (the gap frames' fits too), not its amplitude with the track's largest amplitude. This rule alone gives MATLAB's 15,382 categories of the multiple demo; the amplitudes, the largest `A` plus the largest `c`, the detected frames only or the frame of the largest `A` leave 2 to 11 of its 6,986 single visibility-1 tracks of three frames or more in the other category. Cases `run.buffers` (spots in the farthest buffer frames, which the significance test does not read, dimmer than the track alone but brighter on a raised background, and brighter alone but dimmer on a lowered one) and `run.demo_cut` (two of its real tracks decided the other way round by the amplitudes) |
 | W15 | the Amira files (`Amira/Tracking/tracking_t_<k>.am`) | the text differs where W11's values are printed (16 digits) | not compared on the oracle case; `test_amira_on_matlab_tracks` checks the writer byte for byte on MATLAB's tracks | W11 |
 | W16 | `ProcessedTracks.mat`, `RotatedTracks.mat` as files | the same variables, values, classes, sizes, field order and NaN bits | none (compared by content) | the HDF5 layout (object order, times) is the writer's; `RotatedTracks.mat` is `ProcessedTracks.mat` copied with the rotated values written into it, which MATLAB loads to the same values as the file it writes itself (`isequaln`) |
 | W17 | options other than the demos': `Buffer` other than `[3 3]`, `FitMixtures`, `WindowSize`, `BufferAll`, `Preprocess` and `Postprocess` false, `Frames` other than all; `rotateTracks3D` of objective scans and with `'Crop'` true | not measured | `NotImplementedError` | not measured |

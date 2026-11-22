@@ -5,7 +5,10 @@ oracle harness, and the detection's rules on synthetic spots (MATLAB's PointDete
 intent: spots found within 0.25 voxel with amplitudes within 10 %, none in noise).
 
 The detector cases reuse C01's MATLAB references (``test_references.py``: the same MATLAB code
-and inputs, so the same keys) and add the Python side.
+and inputs, so the same keys) and add the Python side. The runner_threshold cases (task C02d)
+run both runners on a designed condition whose frames tell the runners' residual threshold
+apart from the camera threshold and from the noise, and ``XR_runDetection3D`` without a
+settings file.
 """
 
 import importlib.util
@@ -405,7 +408,172 @@ def _py_frame_parallel(rt, sigma):
 
 
 SIGMA_RUN = np.array([REF.SIGMA_DS[1], REF.SIGMA_DS[2]])
-CASES = _cases()
+
+# -- the runners' residual threshold (task C02d) ---------------------------------------------------
+# a condition of three frames whose noise lies in each range of the runners' rule (below 2/3 of
+# the camera threshold 3, between 1 and 1.5 of it, above 1.5 of it), each with three bright
+# spots (photon-like noise: residual sigmas above every level) and a weak one in a patch of
+# other noise, whose residual sigma lies between the rule's level and another rule's: kept with
+# 0.9 x 3 = 2.7 and not with 3 (frame 1), left out with the noise 3.55 and kept with 3 (frame 2),
+# kept with 3 and not with the noise 5.55 (frame 3)
+RT_EXPERIMENT = "Ex1_rt_z0p5"
+RT_SIZE = (16, 56, 64)  # (z, y, x)
+RT_SIGMA = np.array([[1.3, 1.6], [1.3, 1.6]])  # [sigma_xy sigma_z] of both channels
+RT_BRIGHT = [((5.2, 12.4, 14.6), 220.0), ((9.6, 40.3, 50.2), 260.0), ((11.1, 20.7, 47.4), 190.0)]
+# per frame: the noise, the weak spot's patch noise, its (z, y, x) and amplitude
+RT_FRAMES = (
+    (1.6, 2.7, (8.3, 36.6, 22.4), 9.0),
+    (3.5, 3.1, (8.4, 36.2, 22.7), 9.0),
+    (5.5, 4.0, (7.6, 35.8, 23.1), 12.0),
+)
+
+
+def _rt_counts(v: np.ndarray) -> np.ndarray:
+    t = np.trunc(v)
+    v = t + np.where(np.abs(v - t) >= 0.5, np.sign(v), 0.0)
+    return np.clip(v, 0, 65535).astype(np.uint16)
+
+
+def rt_frame(k: int) -> np.ndarray:
+    """frame k (0-based) of the threshold condition, (z, y, x) uint16"""
+    noise, pn, wpos, wamp = RT_FRAMES[k]
+    sig = synth.beads(
+        RT_SIZE, [p for p, _ in RT_BRIGHT], (1.6, 1.3), [a for _, a in RT_BRIGHT], 0.0
+    )
+    weak = synth.beads(RT_SIZE, [wpos], (1.6, 1.3), [wamp], 0.0)
+    sig = sig.astype(np.float64)
+    std = np.full(RT_SIZE, noise)
+    z, y, x = (int(round(t)) for t in wpos)
+    std[max(z - 5, 0) : z + 6, max(y - 5, 0) : y + 6, max(x - 5, 0) : x + 6] = pn
+    std = np.sqrt(std**2 + sig)
+    r = synth.CounterRNG(2026, "C02d.rt2." + ("low", "mid", "high")[k]).normal(RT_SIZE)
+    return _rt_counts(100.0 + sig + weak.astype(np.float64) + std * r)
+
+
+def _make_rt(folder, settings: bool) -> None:
+    root = Path(folder)
+    ex = root / RT_EXPERIMENT
+    for c in (1, 2):
+        for sub in (ex / f"ch{c}", ex / f"ch{c}" / "DS"):
+            sub.mkdir(parents=True, exist_ok=True)
+        for k in range(len(RT_FRAMES)):
+            vol = rt_frame(k)
+            synth.write_tiff(ex / f"ch{c}" / REF.frame_name(c, k), vol)
+            synth.write_tiff(ex / f"ch{c}" / "DS" / REF.frame_name(c, k), vol)
+    if settings:
+        with open(ex / "rt_Settings.txt", "w", newline="\n") as f:
+            f.write('Camera type = "Orca4.0"\n')
+
+
+def make_rt_condition(folder) -> None:
+    """the threshold condition: two channels of the same frames, raw and DS, the settings file's
+    camera line (camera threshold 3)"""
+    _make_rt(folder, True)
+
+
+def make_rt_condition_no_settings(folder) -> None:
+    """the threshold condition without a settings file: no camera threshold (the noise)"""
+    _make_rt(folder, False)
+
+
+RT_LOAD = (
+    "rt = in{1}; ex = [rt '" + RT_EXPERIMENT + "' filesep]; "
+    "data = XR_loadConditionData3D(ex, {'ch1', 'ch2'}, {'gfp', 'rfp'}); "
+    "apath = {[data(1).source 'Analysis' filesep]}; "
+)
+
+
+def _rt_data(rt):
+    import os
+
+    from petakit5d.detection import condition as cond
+
+    data = cond.load_condition_data(
+        os.path.join(rt, RT_EXPERIMENT) + os.sep, ["ch1", "ch2"], ["gfp", "rfp"]
+    )
+    return data, [data[0].source + "Analysis" + os.sep]
+
+
+def _py_rt_run(rt, sigma):
+    from petakit5d.detection import run
+
+    detect.clear_threshold_cache()
+    data, rp = _rt_data(rt)
+    run.run_detection(
+        data,
+        sigma=np.asarray(sigma),
+        overwrite=True,
+        window_size=None,
+        results_path=rp,
+        mode="xyzAc",
+        fit_mixtures=False,
+        max_mixtures=1,
+        detection_method="lowSNR",
+        background_correction=True,
+        write_amira=False,
+    )
+
+
+def _py_rt_frame_parallel(rt, sigma):
+    from petakit5d.detection import run
+
+    detect.clear_threshold_cache()
+    data, rp = _rt_data(rt)
+    run.run_detection_frame_parallel(
+        data,
+        sigma=np.asarray(sigma),
+        results_path=rp,
+        overwrite=False,
+        window_size=None,
+        mode="xyzAc",
+        fit_mixtures=False,
+        max_mixtures=2,
+        detection_method="lowSNR",
+        background_correction=True,
+    )
+
+
+RT_RUN = (
+    "XR_runDetection3D(data, 'Sigma', in{2}, 'Overwrite', true, 'WindowSize', [], "
+    "'ResultsPath', apath, 'Mode', 'xyzAc', 'FitMixtures', false, 'MaxMixtures', 1, "
+    "'DetectionMethod', 'lowSNR', 'BackgroundCorrection', true, 'WriteAmira', false); out = {};"
+)
+RT_FRAME_PARALLEL = (
+    "XR_runDetection3D_frame_parallel(data, 'Sigma', in{2}, 'Overwrite', false, "
+    "'WindowSize', [], 'ResultsPath', apath, 'Mode', 'xyzAc', 'FitMixtures', false, "
+    "'MaxMixtures', 2, 'DetectionMethod', 'lowSNR', 'BackgroundCorrection', true); out = {};"
+)
+
+
+def _rt_cases():
+    cs = []
+    for name, code, py, make in (
+        ("runner_threshold.run_detection", RT_RUN, _py_rt_run, make_rt_condition),
+        (
+            "runner_threshold.frame_parallel",
+            RT_FRAME_PARALLEL,
+            _py_rt_frame_parallel,
+            make_rt_condition,
+        ),
+        # without a settings file the camera search stops with an error, which XR_runDetection3D
+        # catches (the threshold is the noise); the frame-parallel runner stops (D13)
+        ("runner_threshold.no_settings", RT_RUN, _py_rt_run, make_rt_condition_no_settings),
+    ):
+        cs.append(
+            Case(
+                name,
+                code=REF.CLEAR_CODE + RT_LOAD + code,
+                args=[InPath("cond"), RT_SIGMA],
+                nargout=0,
+                python=py,
+                inputs={"cond": Tree(make, "cond")},
+                tree=tree_spec(per_file={"*.mat": TOL_DETECT}),
+            )
+        )
+    return cs
+
+
+CASES = _cases() + _rt_cases()
 
 
 @oracle.parametrize(CASES)
@@ -1004,3 +1172,138 @@ def test_redundant_fits_keep_the_lowest_rss_of_each_ball():
     }
     # 0's ball holds 1 (a lower RSS), 2's ball holds 1 too: only 1 and the far 3 stay
     assert detect.remove_redundant(ps, 0.5).tolist() == [False, True, False, True]
+
+
+# the residual thresholds MATLAB's runners passed to the lowSNR detector (task C02d, probes r8b
+# and r8c: their detector calls traced on frames of a synthetic movie with designed noise):
+# (camera threshold, the frame's background noise, the threshold)
+RUNNER_THRESHOLDS = (
+    (3.0, 1.6048004347761791, 2.7000000000000002),
+    (3.0, 1.9420178870677436, 2.7000000000000002),
+    (3.0, 2.0449257942204269, 3.0),
+    (3.0, 2.9559334394370813, 3.0),
+    (3.0, 3.0055279532877908, 3.0055279532877908),
+    (3.0, 3.2117485606464795, 3.2117485606464795),
+    (3.0, 4.4303870183389318, 4.4303870183389318),
+    (3.0, 4.5190963828078026, 3.0),
+    (3.0, 9.3965835665055764, 3.0),
+    (65.0, 1.6048004347761791, 58.5),
+    (65.0, 43.006900651041732, 58.5),
+    (65.0, 44.509702496520148, 65.0),
+    (65.0, 65.9991463408615, 65.9991463408615),
+    (65.0, 96.00343051368958, 96.00343051368958),
+    (65.0, 98.995456165427413, 65.0),
+    (NAN, 1.5166356044723308, 1.5166356044723308),
+    (NAN, 16.450795651558572, 16.450795651558572),
+)
+
+
+def test_the_runners_residual_threshold_follows_the_noise():
+    """the runners' 'ResidualSigmaThresh' of a frame: 0.9 camera thresholds below 1/1.5 of it,
+    the camera threshold up to it, the noise up to 1.5 camera thresholds, the camera threshold
+    beyond; the noise without a camera threshold (XR_runDetection3D's)"""
+    from petakit5d.detection import run
+
+    for cam, noise, thr in RUNNER_THRESHOLDS:
+        got = run.residual_threshold(noise, cam)
+        assert got == thr, (cam, noise, got, thr)
+
+
+def test_detect_frame_gives_the_detector_the_frames_threshold(monkeypatch):
+    """detect_frame passes the frame's residual threshold to the detector and the camera
+    threshold in 'BackgroundInfo' (MATLAB's runner, probe r8a: [bg noise cam] and the noise of
+    a frame noisier than the camera threshold)"""
+    from petakit5d.detection import run
+
+    v = _spots_volume("runner_thr", SPOTS, noise=3.6).astype(np.uint16)
+    seen = {}
+    orig = detect.point_source_detection
+
+    def spy(vol, sigma, **kw):
+        seen.update(kw)
+        return orig(vol, sigma, **kw)
+
+    monkeypatch.setattr(detect, "point_source_detection", spy)
+    detect.clear_threshold_cache()
+    run.detect_frame([v], 4, np.array([[1.3, 1.6]]), 2.5, 0, 3.0)
+    bi = detect.estimate_background(run.frame_volume(v), 4)
+    assert 3.0 < bi[2] <= 4.5
+    assert seen["residual_sigma_threshold"] == bi[2]
+    assert np.array_equal(seen["background_info"], np.r_[bi, 3.0])
+
+
+def test_the_runners_go_on_without_a_camera_threshold(tmp_path, monkeypatch):
+    """the camera search's errors (no settings file, none with a camera line) give the runners
+    no camera threshold, NaN (XR_runDetection3D, probe r8d), and the frames' noise as the
+    threshold; the frame-parallel runner the same (MATLAB's stops there: parity D13)"""
+    import os
+
+    from petakit5d.detection import run
+
+    (tmp_path / "ex" / "ch1").mkdir(parents=True)
+    with open(tmp_path / "ex" / "A_Settings.txt", "w", newline="\n") as f:
+        f.write("Laser = 560\n")
+    assert np.isnan(run.runner_camera_threshold(str(tmp_path / "ex" / "ch1") + os.sep))
+
+    def no_settings(_source):
+        raise run.CameraSettingsError("MATLAB:subsdeldimmismatch", "no settings file")
+
+    monkeypatch.setattr(run, "camera_threshold", no_settings)
+    seen = []
+    orig = detect.point_source_detection
+
+    def spy(vol, sigma, **kw):
+        seen.append((kw["residual_sigma_threshold"], kw["background_info"]))
+        return orig(vol, sigma, **kw)
+
+    monkeypatch.setattr(detect, "point_source_detection", spy)
+    # the threshold condition's first frame (noise 1.6, its bright spots' residual sigmas about
+    # 5): REF's frames are noisier than their spots' residuals, which the noise removes
+    make_rt_condition_no_settings(tmp_path / "c")
+    data, _ = _rt_data(str(tmp_path / "c"))
+    for runner in (run.run_detection, run.run_detection_frame_parallel):
+        detect.clear_threshold_cache()
+        seen.clear()
+        rp = str(tmp_path / runner.__name__) + os.sep
+        (entries,) = runner(
+            data, sigma=RT_SIGMA, results_path=[rp], detection_method="lowSNR", frames=[1]
+        )
+        thr, bi = seen[0]
+        assert np.isnan(bi[3]) and thr == bi[2]
+        assert np.asarray(entries[0]["x"]).size >= 3
+
+
+def _rt_found(k, thr):
+    """frame k of the threshold condition detected with the residual threshold thr: its
+    background estimate, whether the weak spot is a detection, how many bright ones are"""
+    from petakit5d.detection import run
+
+    detect.clear_threshold_cache()
+    V = run.frame_volume(rt_frame(k))
+    bi = detect.estimate_background(V, k + 1)
+    ps, _ = detect.point_source_detection(
+        V, RT_SIGMA[0], background_info=np.r_[bi, 3.0], residual_sigma_threshold=thr
+    )
+    n = np.size(ps["x"])
+    P = np.stack([ps["z"], ps["y"], ps["x"]], axis=1) if n else np.zeros((0, 3))
+
+    def near(q):
+        return bool(n) and float(np.min(np.abs(P - np.array(q)).max(axis=1))) < 1
+
+    return bi, near(RT_FRAMES[k][2]), sum(near(q) for q, _ in RT_BRIGHT)
+
+
+def test_the_threshold_condition_tells_the_rules_apart():
+    """the runner_threshold cases' frames: the runners' rule and another rule decide the weak
+    spot each way (frame 1: kept with 2.7, not with 3; frame 2: not with the noise 3.55, kept
+    with 3; frame 3: kept with 3, not with the noise 5.55), the bright spots kept by both"""
+    from petakit5d.detection import run
+
+    for k, other, kept in ((0, 3.0, True), (1, 3.0, False), (2, None, True)):
+        bi, _, _ = _rt_found(k, 3.0)
+        thr = run.residual_threshold(bi[2], 3.0)
+        alt = float(bi[2]) if other is None else other
+        assert thr != alt
+        _, weak, bright = _rt_found(k, thr)
+        _, weak_alt, bright_alt = _rt_found(k, alt)
+        assert weak == kept and weak_alt != kept and bright == bright_alt == 3, (k, thr, alt)

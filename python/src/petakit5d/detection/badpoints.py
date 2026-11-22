@@ -20,8 +20,9 @@ camera thresholds)) on the A paths; 5. neighbour counts (radius mean + 3 std of 
 the second-nearest other point); 6. the removal rules.
 
 Open (docs/parity/detection.md, the bad-point filter): the smoothing choice of line 104 (conv or
-medfilt1), wrong on 3 of the demo's 60 frames without the background correction, and the B
-path's threshold on one more; line 160's bound in the cases listed there.
+medfilt1) is measured, not known (``spike`` and ``dip``: MATLAB's choice on every real frame's
+call recorded, not on 23 designed and mocked ones); the B path's threshold on one of the demo's
+frames without the background correction; line 160's bound in the cases listed there.
 """
 
 from __future__ import annotations
@@ -172,8 +173,11 @@ def smooth_rule(cnt, lst, pre, locs, nb):
     order, prepended entries first) among those below nb/5 are at most 3 bins apart (difference
     <= 3, negative differences included). Branch 95 (PROVISIONAL, 545 of 556 recorded): at least
     two differences <= 3 between the sorted entries below nb/5.
-    Line 104 (PROVISIONAL, right on the 8 real-run frames that smooth): conv [0.1 0.8 0.1] when
-    bin 1 is above the median of the list's counts, else medfilt1."""
+    Line 104 (``spike`` or ``dip``; task C02d, PROVISIONAL: 1,456 of the 1,479 recorded, designed
+    and mocked calls that reach it, every real frame's among them): conv [0.1 0.8 0.1] when the
+    largest of the first three bins stands above the median of the list's counts with both its
+    neighbours below 0.75 of it, or when medfilt1 raises one of the first three bins by more than
+    that median, else medfilt1."""
     low = [p for p in lst if p < nb / 5]
     n94 = len(pre) + sum(1 for p in locs if p < nb / 5)
     if n94 >= 4:
@@ -183,7 +187,39 @@ def smooth_rule(cnt, lst, pre, locs, nb):
     if not smooth:
         return False, False
     med = M.median(np.asarray(cnt, float)[np.array(lst) - 1])
-    return True, bool(cnt[0] > med)
+    return True, spike(cnt, med) or dip(cnt, med)
+
+
+# line 104's bound on a spike's neighbours, as a fraction of it (measured between 0.70 and 0.76)
+SPIKE_NEIGHBOURS = 0.75
+
+
+def spike(cnt, med: float) -> bool:
+    """line 104's first reason for conv over medfilt1: the largest of the first three bins (the
+    first on ties) is above ``med`` (the median of the list's counts) and its neighbours, 0
+    beyond the first bin, are below ``SPIKE_NEIGHBOURS`` of it. Alone it gives MATLAB's choice
+    on 1,453 of the 1,479 recorded, designed and mocked calls that reach line 104 (C02's, C02b's
+    and C02c's runs, and the multiple demo's 120 frames replayed, task C02d); C02's rule, bin 1
+    against ``med``, gave 1,168."""
+    c = np.asarray(cnt, dtype=np.float64).ravel()
+    m = int(np.argmax(c[:3]))
+    q = c[m]
+    left = c[m - 1] if m > 0 else 0.0
+    right = c[m + 1] if m + 1 < c.size else 0.0
+    return bool(q > med and left < SPIKE_NEIGHBOURS * q and right < SPIKE_NEIGHBOURS * q)
+
+
+def dip(cnt, med: float) -> bool:
+    """line 104's second reason for conv over medfilt1 (task C02d): medfilt1 raises one of the
+    first three bins by more than ``med``, as at a dip between two higher bins (the multiple
+    demo's two dense frames the spike rule misses). With ``spike``: 1,456 of the 1,479 calls
+    that reach line 104, all 64 of the demo frames' calls replayed; the misses are designed (a
+    third bin raised to 66 or 200 over its neighbours where MATLAB keeps medfilt1: 21 calls) and
+    two of C02c's mocked medians (5 and 10, where MATLAB keeps medfilt1 while the dip is 7 and
+    11: the dip's bound is not measured beyond these)."""
+    c = np.asarray(cnt, dtype=np.float64).ravel()
+    md = M.medfilt1(c)
+    return bool(np.max(md[:3] - c[:3]) > med)
 
 
 def stage3(sr, nb, cnt, e, locs, smooth=None, conv=None):
