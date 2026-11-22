@@ -15,6 +15,7 @@
 // on one thread in a fixed order, so results do not depend on the thread count.
 #include <pk5d/common.hpp>
 
+#include "ad_libm.hpp"
 #include "mexfit.hpp"
 
 #include <algorithm>
@@ -574,9 +575,9 @@ double ad_stat(const double *x, int n, double mu, double sigma) {
     double s = 0.0;
     for (int i = 0; i < n; i++) {
         const double zi = (x[i] - mu) / sigma, zj = (x[n - 1 - i] - mu) / sigma;
-        const double Fi = 0.5 * std::erfc(-zi / std::sqrt(2.0));
-        const double Fj = 0.5 * std::erfc(-zj / std::sqrt(2.0));
-        s += (2.0 * (i + 1) - 1.0) * (std::log(Fi) + std::log(1.0 - Fj));
+        const double Fi = 0.5 * pk5d_ad::erfc(-zi / std::sqrt(2.0));
+        const double Fj = 0.5 * pk5d_ad::erfc(-zj / std::sqrt(2.0));
+        s += (2.0 * (i + 1) - 1.0) * (pk5d_ad::log(Fi) + pk5d_ad::log(1.0 - Fj));
     }
     return -n - s / n;
 }
@@ -777,10 +778,10 @@ void bind_fit_mex(f64_in vals, i64_in dims, f64_in p0, i64_in free, f64_out prm,
             std::sort(sr.begin(), sr.end());
             const double den = sd * std::sqrt(2.0);
             std::vector<double> F(n);
-            for (int q = 0; q < n; q++) F[q] = 0.5 * (1.0 + std::erf(sr[q] / den));
+            for (int q = 0; q < n; q++) F[q] = 0.5 * (1.0 + pk5d_ad::erf(sr[q] / den));
             double S = 0.0;
             for (int q = 0; q < n; q++)
-                S += (2.0 * (q + 1) - 1.0) * (std::log(F[q]) + std::log(1.0 - F[n - 1 - q]));
+                S += (2.0 * (q + 1) - 1.0) * (pk5d_ad::log(F[q]) + pk5d_ad::log(1.0 - F[n - 1 - q]));
             const double a2 = -n - S / n;
             st[0] = rss, st[1] = mean, st[2] = sd, st[3] = a2 > ad_crit ? 1.0 : 0.0, st[4] = a2;
             st[5] = r.iterations, st[6] = r.nfev, st[7] = r.status;
