@@ -29,8 +29,8 @@ a repository of its own. What waits for a decision of the user is marked **(user
 |---|---|---|---|---|
 | Linux x86-64 | `manylinux_2_28_x86_64` (auditwheel also tags it `manylinux_2_24`) | GCC 14 of the image `quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1`, the image of the cpp-zarr and cpp-tiff wheels | auditwheel | the cpp-zarr wheel's libgomp, carried in the wheel (below) |
 | macOS arm64 | `macosx_13_0_arm64` | Apple Clang | delocate | LLVM's libomp, built for macOS 13.0 from LLVM's sources and copied in by delocate |
-| Windows x86-64 | `win_amd64` | MSVC (on the windows-2025 runners Visual Studio 2026's, toolset 14.51), `/openmp:llvm` | delvewheel `--no-diagnostic` | `libomp140.x86_64.dll`, which delvewheel copies in with the C++ runtime |
-| Windows x86-64, MinGW-w64 (the choice is the user's: [decisions/0011](decisions/0011-windows-toolchain.md)) | `win_amd64` | MinGW-builds' GCC 12.2.0 (UCRT), the toolchain of the cpp-zarr and cpp-tiff wheels (`tools/get_mingw.sh`), the Ninja generator | delvewheel `--no-diagnostic` (nothing to copy in) | the toolchain's `libgomp-1.dll`, with `libwinpthread-1.dll` and `libgcc_s_seh-1.dll`, which the build puts next to the modules under their own names: one runtime with cpp-zarr and cpp-tiff |
+| Windows x86-64 (the user's choice of 2026-11-21: [decisions/0011](decisions/0011-windows-toolchain.md)) | `win_amd64` | MinGW-builds' GCC 12.2.0 (UCRT), the toolchain of the cpp-zarr and cpp-tiff wheels (`tools/get_mingw.sh`), the Ninja generator (`PETAKIT5D_WINDOWS_TOOLCHAIN=mingw`) | delvewheel `--no-diagnostic` (nothing to copy in) | the toolchain's `libgomp-1.dll`, with `libwinpthread-1.dll` and `libgcc_s_seh-1.dll`, which the build puts next to the modules under their own names: one runtime with cpp-zarr and cpp-tiff |
+| Windows x86-64, MSVC: built, tested and checked, not released (the check of a source build with Visual Studio) | `win_amd64` | MSVC (on the windows-2025 runners Visual Studio 2026's, toolset 14.51), `/openmp:llvm` | delvewheel `--no-diagnostic` | `libomp140.x86_64.dll`, which delvewheel copies in with the C++ runtime |
 
 For each platform two wheels: **CPython 3.11** (`cp311-cp311`) and **CPython 3.12 and newer**
 (`cp312-abi3`), with nanobind's stable ABI. The modules use no Python API outside the limited API
@@ -64,20 +64,20 @@ against an installed wheel in CI (below).
   (15.0 on the macOS 15 runners, and Homebrew has none for macOS 13 or 14), so the wheel's target
   would follow it, and a `macosx_15_0` wheel installs on no older macOS, though every dependency
   supports macOS 13.
-- **Windows:** MSVC's LLVM OpenMP runtime `libomp140.x86_64.dll`. The build copies it next to
-  the modules when the toolset's redistributable folders have it; Visual Studio 2026's (the
+- **Windows (the release's wheels, MinGW-w64):** GCC's `libgomp-1.dll` of the toolchain, with the
+  DLLs it loads (`libwinpthread-1.dll`, `libgcc_s_seh-1.dll`), next to the modules under their own
+  names (delvewheel finds nothing to copy in). The cpp-zarr and cpp-tiff libraries load the same file
+  by that name, and Windows loads a DLL of a name once per process: one runtime for the three
+  ([decisions/0011](decisions/0011-windows-toolchain.md)). The build also copies the toolchain's
+  notices of them, as it ships them, into `petakit5d/_ext/licenses/` (THIRD_PARTY_NOTICES.md).
+- **Windows, MSVC's wheels (not released):** MSVC's LLVM OpenMP runtime `libomp140.x86_64.dll`.
+  The build copies it next to the modules when the toolset's redistributable folders have it; Visual Studio 2026's (the
   windows-2025 runners') don't, so delvewheel copies it into `petakit5d.libs/` under a mangled
   name, with the C++ runtime (`msvcp140.dll`), from the first folder on `PATH` that has them:
   on the runners System32's libomp140, and for the C++ runtime, unless the workflow puts the
   toolset's own redistributable one first, any program's copy that comes earlier (a JDK's 14.40
   in the first trial, older than the 14.51 toolset, which Microsoft does not support and
   delvewheel warns of). All modules load the one copy of each.
-- **Windows, built with MinGW-w64:** GCC's `libgomp-1.dll` of the toolchain, with the DLLs it
-  loads (`libwinpthread-1.dll`, `libgcc_s_seh-1.dll`), next to the modules under their own names
-  (delvewheel finds nothing to copy in). The cpp-zarr and cpp-tiff libraries load the same file
-  by that name, and Windows loads a DLL of a name once per process: one runtime for the three
-  ([decisions/0011](decisions/0011-windows-toolchain.md)). The build also copies the toolchain's
-  notices of them, as it ships them, into `petakit5d/_ext/licenses/` (THIRD_PARTY_NOTICES.md).
 
 ### The GPU extra
 
@@ -163,12 +163,14 @@ repository's default branch later). The `test` branch's pushes don't run it.
 
 | Job | Runners | Steps |
 |---|---|---|
-| `wheels` | ubuntu-24.04, macos-15, windows-2025 | cibuildwheel 4.3.5, run from `python/` with `[tool.cibuildwheel]`: per Python the build, the repair, the audit of the abi3 wheel (`abi3audit --strict`) and the test command in a fresh environment; then the checks |
+| `wheels` | ubuntu-24.04, macos-15, windows-2025 twice (MinGW-w64, the release's; MSVC) | cibuildwheel 4.3.5, run from `python/` with `[tool.cibuildwheel]`: per Python the build, the repair, the audit of the abi3 wheel (`abi3audit --strict`) and the test command in a fresh environment; then the checks |
 | `sdist` | ubuntu-24.04 | `python -m build --sdist`; a wheel built from the sdist alone (`pip wheel`, isolated), installed in a fresh environment and tested by the sdist's own smoke and OpenMP tests; the checks of both |
-| `addon` | the three | cibuildwheel from `python/cpp/fft/exact`: one `py3-none` wheel per platform, built once (CPython 3.12; on Linux in petakit5d's image), its test (both libraries load and are `fftw-3.3.8`) and the checks |
+| `addon` | the same four | cibuildwheel from `python/cpp/fft/exact`: one `py3-none` wheel per platform, built once (CPython 3.12; on Linux in petakit5d's image), its test (both libraries load and are `fftw-3.3.8`) and the checks |
 
 The artifacts are `petakit5d-<system>-<architecture>`, `sdist` and
-`petakit5d-fftw-<system>-<architecture>`. To check wheels anywhere else, run
+`petakit5d-fftw-<system>-<architecture>`, the release's wheels; MSVC's Windows wheels are
+`petakit5d-Windows-X64-msvc` and `petakit5d-fftw-Windows-X64-msvc`, which are not published. To
+check wheels anywhere else, run
 `python tools/check_wheel.py <folder>` from `python/`; with the site's own names
 (`--forbid-file`, a file outside the repository) on the lab's machines.
 
@@ -234,9 +236,12 @@ shipping them with code under any license.
 | libstdc++, libgcc (Linux) | linked statically | GPL-3.0 with the GCC Runtime Library Exception |
 | libgomp (Linux) | `petakit5d/_ext/libgomp-e985bcbb.so.1.0.0` | GPL-3.0 with the GCC Runtime Library Exception |
 | libomp (macOS) | `petakit5d/.dylibs/` | Apache-2.0 with LLVM exceptions |
-| libomp140, MSVC C++ runtime (Windows) | `petakit5d.libs/` (or `petakit5d/_ext/`) | Microsoft's redistributable terms (the Visual Studio that builds the wheel: 2026 on the windows-2025 runners) |
 | libgomp-1, libgcc_s_seh-1 (Windows, MinGW-w64); libstdc++, libgcc linked statically | `petakit5d/_ext/` | GPL-3.0 with the GCC Runtime Library Exception; the toolchain's texts in `petakit5d/_ext/licenses/gcc/` |
 | MinGW-w64's runtime (linked statically), winpthreads (`libwinpthread-1.dll`) (Windows, MinGW-w64) | the modules; `petakit5d/_ext/` | the mingw-w64 project's BSD-style license with its parts' notices; MIT with a BSD notice: the toolchain's texts in `petakit5d/_ext/licenses/mingw-w64/` and `winpthreads/` |
+
+MSVC's Windows wheels, which are built and checked but not published, carry `libomp140` and
+MSVC's C++ runtime instead (`petakit5d.libs/`, or `petakit5d/_ext/`), under Microsoft's
+redistributable terms (the Visual Studio that builds them: 2026 on the windows-2025 runners).
 
 ### Required packages
 
@@ -335,9 +340,10 @@ The checks after the filter:
    release commit) is green: every wheel of the matrix and of the add-on passes its test command
    and the checks; one Linux wheel installed into a fresh environment on another machine passes
    the full CPU suite; the wheels that are published are that run's artifacts.
-   - **The Windows toolchain (user):** the wheels of MSVC or of MinGW-w64's GCC (the workflow builds
-     both: artifacts `...-Windows-X64` and `...-Windows-X64-mingw`), on the measurements of
-     [decisions/0011](decisions/0011-windows-toolchain.md); the other one's matrix entries then go.
+   - **The Windows toolchain:** MinGW-w64's (the user, 2026-11-21:
+     [decisions/0011](decisions/0011-windows-toolchain.md)): the artifacts `...-Windows-X64`. MSVC's
+     wheels (`...-Windows-X64-msvc`) are the check of a source build with Visual Studio: they
+     pass the same tests and checks, and are not published.
 5. **The source distribution:** the same run's `sdist` job: no `cpp/fft/exact/`, no build
    folders, and a wheel built from it alone passes the smoke tests.
 6. **The licenses:** the tables above against the installed packages' metadata; new bundled

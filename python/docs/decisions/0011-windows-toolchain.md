@@ -1,8 +1,9 @@
 # 0011: Windows: MinGW-w64's GCC beside MSVC
 
-Status: proposed (task W02, 2026-11-21): both toolchains build and are tested; the user chooses the
-one the release wheels and the Windows CI use, on the measurements below. Decision 0001 chose MSVC
-for Windows; this record adds MinGW-w64 and does not remove MSVC.
+Status: accepted (the user, 2026-11-21; proposed by task W02, made the default by task W03):
+MinGW-w64's GCC builds the release Windows wheels and is the toolchain of source builds on
+Windows where it is found, with MSVC as the fallback; both are built and tested. Decision 0001
+chose MSVC for Windows; this record puts MinGW-w64 first and keeps MSVC.
 
 ## Context
 
@@ -18,9 +19,41 @@ for Windows; this record adds MinGW-w64 and does not remove MSVC.
 
 ## Decision
 
-The build takes MinGW-w64's GCC as a second Windows toolchain: `CC=gcc CXX=g++` with the Ninja
-generator (`CMAKE_GENERATOR=Ninja`), for `pip install`, cibuildwheel and CMake build trees alike.
-`tools/get_mingw.sh` fetches the toolchain of the libraries' wheels by URL and SHA-256 (CI uses it).
+The user, 2026-11-21, on the measurements below: **"Yes"** to MinGW-w64 for the release Windows
+wheels; then, on source builds, **"Shouldn't mingw be the default as well for 1.?"**, so source
+builds on Windows take it too, with MSVC as the fallback, since most Windows machines have Visual
+Studio and no MinGW-w64; and **"Sure"** to the Anderson-Darling statistics taking the UCRT's
+`erf`, `erfc` and `log` with MinGW-w64 (below).
+
+- **Released:** the wheel workflow's MinGW-w64 builds, MinGW-builds' GCC 12.2.0 with the UCRT
+  (`tools/get_mingw.sh` fetches it by URL and SHA-256): petakit5d's abi3 and cp311 wheels
+  (artifact `petakit5d-Windows-X64`) and the exact add-on's (`petakit5d-fftw-Windows-X64`).
+- **Built and tested, not released:** MSVC's wheels and add-on, the check of a source build with
+  Visual Studio (`...-Windows-X64-msvc`: the same test commands and release checks), and the
+  Python workflow's source builds, both of whose paths run the whole suite on windows-2025: one
+  that finds MinGW-builds' GCC 12.2.0 and takes it (Python 3.12 in `tools/get_mingw.sh`'s folder,
+  3.14 on `PATH`), and one that finds only the runners' own MinGW-w64 (GCC 15.2.0), leaves it
+  out and builds with MSVC.
+- **Source builds** ([platforms](../platforms.md), "Windows: the toolchain of a source build"):
+  `pip install` on Windows takes MinGW-builds' GCC 12.2.0 with the UCRT where it is the first
+  `gcc` on `PATH` or is in `tools/get_mingw.sh`'s folder, checked by its version (its banner) and
+  its runtime (the UCRT), and else MSVC: a first attempt with Ninja, which
+  `cmake/Pk5dToolchain.cmake` fails at its configure without that toolchain, then
+  scikit-build-core's second attempt (`if.failed`, pyproject.toml's overrides) with its default,
+  Visual Studio. Another MinGW-w64 is not taken: its `libgomp-1.dll` is not the one the cpp-zarr
+  and cpp-tiff wheels bring, and a process loads one DLL of that name. A toolchain the
+  environment or CMake's command line names wins, and `PETAKIT5D_WINDOWS_TOOLCHAIN` (`mingw`:
+  that toolchain or an error, as the release wheels are built; `msvc`). The build log says which
+  toolchain was taken and why. The exact add-on's source build follows the same rules (its own
+  overrides and a copy of the module, `cpp/fft/exact/cmake/`). Why this way: scikit-build-core picks the generator, and with it
+  MSVC or not, before CMake runs, and its overrides can only test the environment, not a
+  compiler's version; a configure that fails without the right toolchain, and the retry that
+  scikit-build-core offers for a failed build, keep the whole choice in the build's own files.
+  (A first attempt that fails later, in the compile, is retried with MSVC too; CI's MinGW-w64
+  jobs check that their build took MinGW-w64.)
+
+The build takes MinGW-w64's GCC with the Ninja generator, for `pip install`, cibuildwheel and
+CMake build trees alike: chosen as above, or named (`CC=gcc CXX=g++ CMAKE_GENERATOR=Ninja`).
 
 **What the build does with it** (`cmake/Pk5dExtension.cmake`, `cmake/Pk5dOpenMP.cmake`):
 
@@ -67,6 +100,13 @@ nothing elsewhere, and the Linux, macOS and MSVC builds compile the code they co
   Windows 10, against 1.4 for their SSE2 forms, which the wrappers use (the same bits as
   MinGW-w64's for a million arguments, subnormal results among them). The detection fits'
   correctly rounded exp calls them four times a value. (The UCRT's take 17 and 19 ns.)
+- **The Anderson-Darling statistics' `erf`, `erfc` and `log`** (`cpp/detection/ad_libm.hpp`:
+  `adtest_mex`'s, which the CD_Newton fits take, and the fitGaussian3D mex's) are the UCRT's,
+  through their imports, as MSVC's build has them (the user, 2026-11-21): MinGW-w64's x87
+  functions took 62 and 29 ns a call for `erf` and `log` at 64 bits, the UCRT's 18 and 4, and a
+  fit of A and c spends most of its time in its test of 729 residuals. The three go together: a
+  module may not take `erf` from the UCRT and `erfc` from libmingwex, which has both in one
+  object, while the import library defines them too.
 - **thread_local objects with destructors** are destroyed after emulated TLS has freed them when a
   thread ends (OpenMP's threads end as their teams change): winpthreads runs emutls' key destructor
   before the module's TLS callback runs theirs. pocketfft's backend kept a line buffer per thread

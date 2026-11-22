@@ -26,28 +26,60 @@ how much, and how the port keeps the results the same. The build flags are in
 
 | | Linux x86-64 | macOS ARM (Apple silicon) | Windows x86-64 |
 |---|---|---|---|
-| compiler | GCC (reference: 13) | Apple Clang | MSVC (Visual Studio 2022 or 2026), or MinGW-w64's GCC: MinGW-builds' 12.2.0, the toolchain of the cpp-zarr and cpp-tiff wheels ([decisions/0011](decisions/0011-windows-toolchain.md)) |
-| OpenMP | libgomp: the cpp-zarr wheel's, shared with cpp-zarr and cpp-tiff (`docs/decisions/0008-openmp-runtime.md`) | libomp: Homebrew's (`brew install libomp`), or another found through `OpenMP_ROOT` (a folder with `include/omp.h` and `lib/libomp.dylib`, such as conda-forge's llvm-openmp) | MSVC: `/openmp:llvm`, runtime `libomp140.x86_64.dll` next to the modules; MinGW-w64: the toolchain's `libgomp-1.dll` next to the modules, shared with cpp-zarr and cpp-tiff |
-| no contraction | `-ffp-contract=off` | `-ffp-contract=off` | `/fp:precise`; MinGW-w64: `-ffp-contract=off` |
-| vector code | GCC vector extensions, AVX2 dispatch | Clang vector extensions (NEON) | MSVC: the same operations lane by lane; MinGW-w64: GCC vector extensions, AVX2 dispatch |
+| compiler | GCC (reference: 13) | Apple Clang | MinGW-w64's GCC: MinGW-builds' 12.2.0 with the UCRT, the toolchain of the release wheels and of the cpp-zarr and cpp-tiff wheels; MSVC (Visual Studio 2022 or 2026) where a source build doesn't find that toolchain ([decisions/0011](decisions/0011-windows-toolchain.md), below) |
+| OpenMP | libgomp: the cpp-zarr wheel's, shared with cpp-zarr and cpp-tiff (`docs/decisions/0008-openmp-runtime.md`) | libomp: Homebrew's (`brew install libomp`), or another found through `OpenMP_ROOT` (a folder with `include/omp.h` and `lib/libomp.dylib`, such as conda-forge's llvm-openmp) | MinGW-w64: the toolchain's `libgomp-1.dll` next to the modules, shared with cpp-zarr and cpp-tiff; MSVC: `/openmp:llvm`, runtime `libomp140.x86_64.dll` next to the modules |
+| no contraction | `-ffp-contract=off` | `-ffp-contract=off` | `-ffp-contract=off`; MSVC: `/fp:precise` |
+| vector code | GCC vector extensions, AVX2 dispatch | Clang vector extensions (NEON) | GCC vector extensions, AVX2 dispatch; MSVC: the same operations lane by lane |
 
 `petakit5d._ext.core.build_info()` names the compiler, the flags and the OpenMP runtime, and
 `fma_contracted()` checks at run time that no multiply-add was fused (tests/test_smoke.py).
 
-**Windows: MSVC or MinGW-w64's GCC.** CPython, NumPy and SciPy are built with MSVC, and `pip
-install` from source uses it with a stock Visual Studio. Every kernel has a path for compilers
-without GCC's vector extensions and target attributes: the run-time instruction-set dispatch of
-the MIP and flat-field kernels runs the baseline loops, binary morphology and the 3 x 3 x 3
-median filter do their compare-exchanges lane by lane, and pocketfft runs one line at a time.
-These are the same operations in the same order (selections, or element-wise IEEE operations),
-so the bits are the same; only the speed differs. MinGW-w64's GCC (`CC=gcc CXX=g++` and
-`CMAKE_GENERATOR=Ninja`; `tools/get_mingw.sh` fetches the toolchain of the cpp-zarr and cpp-tiff
-wheels) takes the vector paths and the dispatch, as on Linux, and shares one OpenMP runtime with
-those libraries; what it needs on Windows (the x87 unit's precision by thread, its C library's
-`fma` and `round`, thread_local objects, pocketfft's pool at exit) is in
-[decisions/0011](decisions/0011-windows-toolchain.md). clang-cl would take the vector paths too;
-it needs Visual Studio's Clang component, an LLVM OpenMP runtime to ship and compiler-rt's
-builtins for `__builtin_cpu_supports`.
+**Windows: MinGW-w64's GCC, or MSVC.** The release wheels are built with MinGW-builds' GCC 12.2.0
+with the UCRT, the toolchain of the cpp-zarr and cpp-tiff wheels (the user's decision of
+2026-11-21, [decisions/0011](decisions/0011-windows-toolchain.md)). It takes the vector paths and
+the dispatch, as on Linux, and shares one OpenMP runtime with those libraries; what it needs on
+Windows (the x87 unit's precision by thread, its C library's `fma` and `round`, thread_local
+objects, pocketfft's pool at exit) is in decisions/0011. CPython, NumPy and SciPy are built with
+MSVC, and most Windows machines have Visual Studio and no MinGW-w64, so a source build falls back
+to MSVC (below). Every kernel has a path for compilers without GCC's vector extensions and target
+attributes: the run-time instruction-set dispatch of the MIP and flat-field kernels runs the
+baseline loops, binary morphology and the 3 x 3 x 3 median filter do their compare-exchanges lane
+by lane, and pocketfft runs one line at a time. These are the same operations in the same order
+(selections, or element-wise IEEE operations), so the bits are the same; only the speed differs.
+clang-cl would take the vector paths too; it needs Visual Studio's Clang component, an LLVM
+OpenMP runtime to ship and compiler-rt's builtins for `__builtin_cpu_supports`.
+
+### Windows: the toolchain of a source build
+
+`pip install` from source on Windows (and cibuildwheel's builds) takes MinGW-builds' GCC 12.2.0
+with the UCRT where it finds it, and MSVC otherwise:
+
+- **Where it looks:** the first `gcc` on `PATH`, and then the folder `tools/get_mingw.sh` unpacks
+  the toolchain into when it is given none, `%LOCALAPPDATA%\petakit5d\mingw-12.2.0`
+  (`bash tools/get_mingw.sh` fetches it there; Git for Windows' bash has what it needs).
+- **What it takes:** a `gcc` with `g++` next to it whose version and runtime are that toolchain's:
+  the banner `(x86_64-posix-seh-rev2, Built by MinGW-W64 project) 12.2.0` and the UCRT as its C
+  library (`__MSVCRT_VERSION__` 0xE00 in its headers; MinGW-builds' msvcrt builds of 12.2.0 have
+  the same banner). Another MinGW-w64 is left out, with its reason: MSYS2's GCC, or the GitHub
+  Windows runners' own (MinGW-builds' GCC 15.2.0, also UCRT, in `C:\mingw64\bin` on `PATH`). A
+  process loads one `libgomp-1.dll`, the first one asked for, for the modules and the I/O packages
+  alike, and another GCC's is not the one the cpp-zarr and cpp-tiff wheels bring.
+- **How:** `pyproject.toml`'s overrides make scikit-build-core's first attempt a Ninja build, in
+  which `cmake/Pk5dToolchain.cmake` finds and checks the toolchain before `project()` and fails
+  the configure without it; scikit-build-core then builds again (`if.failed`) with its own default
+  there, Visual Studio's generator and MSVC. The build log (`pip install -v`) says which toolchain
+  was taken and why (`petakit5d: the Windows toolchain: ...`; before it, why MinGW-w64 was not),
+  and `petakit5d._ext.core.build_info()` names the compiler.
+- **An explicit choice wins:** a toolchain named in the environment (`CC`, `CXX`,
+  `CMAKE_GENERATOR`, `CMAKE_ARGS`, `CMAKE_TOOLCHAIN_FILE`) or on CMake's command line
+  (`-C cmake.define.CMAKE_CXX_COMPILER=...` with pip), or the switch
+  `PETAKIT5D_WINDOWS_TOOLCHAIN`: `mingw` takes MinGW-builds' GCC 12.2.0, found as above, or fails
+  with how to get it (the release wheels are built so); `msvc` takes MSVC. A MinGW-w64 named so
+  that is not MinGW-builds' 12.2.0 with the UCRT builds, with a warning. In a CMake build tree,
+  `-G Ninja -DPK5D_WINDOWS_TOOLCHAIN=mingw` finds and checks the toolchain the same way.
+- **The exact add-on** (`pip install python/cpp/fft/exact`) takes its toolchain by the same rules:
+  its own overrides, and a copy of the module in its source tree (`cpp/fft/exact/cmake/`), which
+  stands alone (`petakit5d-fftw: the Windows toolchain: ...` in its log).
 
 ## What differs by system, and what the port does about it
 

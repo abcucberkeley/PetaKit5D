@@ -16,7 +16,7 @@ Python 3.11 or newer and a C/C++17 compiler with OpenMP:
 |---|---|---|
 | Linux | GCC 9 or newer (or Clang with libomp) | nothing |
 | macOS (Apple silicon) | Apple Clang (Xcode command line tools) | `brew install libomp` |
-| Windows | MSVC from Visual Studio 2022 ("Desktop development with C++") | nothing |
+| Windows | MinGW-builds' GCC 12.2.0 with the UCRT (`bash tools/get_mingw.sh` fetches it), else MSVC from Visual Studio 2022 ("Desktop development with C++"): `docs/platforms.md` | nothing |
 
 ```
 pip install ./python            # or: pip install "./python[test]" for the test tools

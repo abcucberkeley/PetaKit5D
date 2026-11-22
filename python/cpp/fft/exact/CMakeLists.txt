@@ -7,7 +7,17 @@
 # Neither installs anything into the petakit5d package: the port as distributed contains no GPL code.
 cmake_minimum_required(VERSION 3.26...4.2)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    # Windows: the compilers of a source build, as petakit5d's, chosen before project() (cmake/Pk5dToolchain.cmake,
+    # petakit5d's file: MinGW-builds' GCC 12.2.0 with the UCRT where it is found, else MSVC)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pk5dToolchain.cmake)
+    if(CMAKE_HOST_WIN32)
+        pk5d_windows_toolchain()
+    endif()
     project(petakit5d_fftw LANGUAGES C)
+    if(WIN32)
+        message(STATUS "petakit5d-fftw: the Windows toolchain: ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION} "
+                       "(${CMAKE_C_COMPILER}): ${PK5D_TOOLCHAIN_WHY}")
+    endif()
     if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
         set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
     endif()
