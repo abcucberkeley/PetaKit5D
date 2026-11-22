@@ -237,6 +237,16 @@ tiff_bytes=False, zarr_chunks='note', text_format=True, masks=[(regex, replaceme
 
 - names are matched with uuids and 14-digit time stamps masked; files only one side wrote,
   and files removed from the work folder, are reported;
+- **a run's short uuids** (on Windows `get_uuid` keeps 4 characters, which only the run's own
+  list tells from other names and values) are not masked everywhere but aligned with the
+  reference: in the run's names, texts and values a token equal to one becomes `<uuid>` only
+  where MATLAB's (36 characters, masked wherever they are) has `<uuid>` at that place, so a
+  real value equal to one (a `1024` in parameters.json against the uuid `1024`) compares as
+  itself, with the golden store and with a manifest alike. Against a text or value that a
+  manifest keeps by its hash alone, maskings of the run's uuid tokens are tried (all, none,
+  those in names after `_`, `/`, `\` or `=`, those of some of its uuids, and for a text those
+  that differ from all or none in one place, two, ..., at most 1024) and the one that gives
+  the hash is taken;
 - **tiff**: by content (`petakit5d.testing.content`): equal bytes, else the decoded voxels and
   the tags are compared. The tags are every tag of every page but the layout ones (strip and
   tile offsets, byte counts and sizes, rows per strip, sub-IFD pointers) and those that name

@@ -59,6 +59,8 @@ from petakit5d.testing.compare import (
     MValue,
     Report,
     _cmp,
+    align_text,
+    align_value,
     compare_trees,
     describe,
     describe_tree,
@@ -70,7 +72,6 @@ from petakit5d.testing.compare import (
     sha256_file,
     to_mvalue,
     tree_from_descriptor,
-    uuid_masks,
     write_pkv,
 )
 
@@ -522,12 +523,14 @@ def check_manifests(root: str | os.PathLike | None = None) -> list[str]:
 
 
 def case_masks(ref: Reference, res: PyResult) -> tuple[Masks, Masks]:
-    """the reference's and the run's masks. The run's own short uuids (Windows' 4 characters)
-    are masked on both sides, so that a reference value that happens to equal one (a 1024 in
-    parameters.json against the uuid "1024") stays equal"""
-    um = uuid_masks(res.uuids)
-    am = Masks().with_paths(work=str(res.work), host=socket.gethostname()).plus(*um)
-    return ref.masks.plus(*um), am
+    """the reference's and the run's masks. The run's own short uuids (Windows' 4 characters,
+    which only its list tells from other names) go with the run's masks, to be aligned with
+    the reference (compare.align_text): a token equal to one is masked only where the
+    reference has <uuid> at that place, so a real value that equals one (a 1024 in
+    parameters.json against the uuid "1024") compares as itself on both sides, with the store
+    and with a manifest alike"""
+    am = Masks().with_paths(work=str(res.work), host=socket.gethostname())
+    return ref.masks, am.with_uuids(res.uuids)
 
 
 def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
@@ -567,8 +570,10 @@ def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
                     "error",
                     f"MATLAB raised {rid}; the Python exception has no identifier attribute",
                 )
-            if case.error_message and _clean_text(str(res.error), am) != _clean_text(rmsg, rm):
-                rep.add("error", "message", f"MATLAB {rmsg!r}", f"Python {str(res.error)!r}")
+            if case.error_message:
+                rt = _clean_text(rmsg, rm)
+                if align_text(rt, _clean_text(str(res.error), am), am.uuids) != rt:
+                    rep.add("error", "message", f"MATLAB {rmsg!r}", f"Python {str(res.error)!r}")
     else:
         if res.error is not None:
             tail = res.error_text.strip().splitlines()[-6:]
@@ -588,6 +593,7 @@ def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
                 except (TypeError, ValueError) as e:
                     rep.add(name, "kind", f"the Python value cannot be read as a MATLAB value: {e}")
                     continue
+                a = align_value(r, a, am.uuids)
                 sub = Report()
                 with layout("vol" if role_kind(roles[i]) == "vol" else None):
                     _cmp(r, a, case.spec_for(i), name, sub)
