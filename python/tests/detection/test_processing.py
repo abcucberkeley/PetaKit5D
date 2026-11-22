@@ -805,7 +805,7 @@ def _py_run(cond, kind: str = "designed"):
     write_mat(rp + "Detection3D.mat", {"frameInfo": frame_info(kind)}, version="7.3")
     write_mat(rp + "trackedFeatures.mat", {"tracksFinal": tracks_final(kind)}, version="7")
     run_track_processing(data, overwrite=True, results_path=[rp])
-    rotate_tracks(data, overwrite=True, results_path=[rp])
+    rotate_tracks(data, overwrite=True, results_path=[rp], crop=False)
 
 
 # the gap and buffer fits' values and what follows from them (positions, amplitudes, their
@@ -969,7 +969,7 @@ def _py_rotate_reversed(cond):
     data = rot_data(cond, True)
     rp = data["source"] + "Analysis" + os.sep
     write_mat(rp + "ProcessedTracks.mat", {"tracks": rot_tracks()}, version="7.3")
-    rotate_tracks(data, overwrite=True, results_path=[rp], matlab_quirks=True)
+    rotate_tracks(data, overwrite=True, results_path=[rp], crop=False, matlab_quirks=True)
 
 
 ROT_REVERSED = Case(
@@ -1078,7 +1078,7 @@ def test_existing_results_are_kept(tmp_path):
         (tmp_path / f).write_bytes(b"kept")
     data = {"source": str(tmp_path), "movieLength": 1.0, "framerate": 1.0, "zAniso": 1.0}
     run_track_processing(data, results_path=[rp])
-    rotate_tracks(data, results_path=[rp])
+    rotate_tracks(data, results_path=[rp], crop=False)
     assert all((tmp_path / f).read_bytes() == b"kept" for f in names)
     with pytest.raises(NotImplementedError):
         run_track_processing(data, results_path=[rp], buffer=(5, 5))
@@ -1218,7 +1218,7 @@ def test_stages_take_a_condition(tmp_path):
             synth.write_tiff(rp + "Masks" + os.sep + dmask_name(f, 2), np.zeros(ROT_SIZE, np.uint8))
         run_tracking(form, file_name="trackedFeatures.mat", overwrite=True, results_path=[rp])
         run_track_processing(form, overwrite=True, results_path=[rp])
-        rotate_tracks(form, overwrite=True, results_path=[rp])
+        rotate_tracks(form, overwrite=True, results_path=[rp], crop=False)
     out = {
         name: {
             f: read_mat(str(tmp_path / name / f))
@@ -1277,7 +1277,7 @@ def test_rotated_tracks_file(tmp_path, n, reversed_):
         "reversed": reversed_,
     }
     assert P._has_tracks_struct(rp + "ProcessedTracks.mat") == (n > 1)  # the path taken
-    rotate_tracks(data, results_path=[rp])
+    rotate_tracks(data, results_path=[rp], crop=False)
     out = read_mat(rp + "RotatedTracks.mat")
     assert list(out) == ["tracks"]
     got = out["tracks"]
@@ -1376,7 +1376,7 @@ def test_reversed_scan_rotation(tmp_path, quirks):
             "reversed": rev,
             "objectiveScan": False,
         }
-        rotate_tracks(data, results_path=[rp], matlab_quirks=quirks)
+        rotate_tracks(data, results_path=[rp], crop=False, matlab_quirks=quirks)
         rt = list(read_mat(rp + "RotatedTracks.mat", "tracks")["tracks"])
         rot = np.array([[float(np.asarray(t[k]).ravel()[0]) for k in "xyz"] for t in rt])
         got[rev] = (rot, _centroids(read_tiff(str(d / "DSR" / "scan.tif")), rows))
@@ -1510,7 +1510,7 @@ def test_default_results_folder(monkeypatch, tmp_path, sep, source, want):
         (ana / f).write_bytes(b"kept")
     data = {"source": str(tmp_path) + os.sep, "movieLength": 1.0, "framerate": 1.0}
     run_track_processing(data)
-    rotate_tracks(data)
+    rotate_tracks(data, crop=False)
     assert (ana / "ProcessedTracks.mat").read_bytes() == b"kept"
 
 

@@ -8,6 +8,10 @@ detection's sigmas and position. The demos then divide ``sigma_z`` by the condit
 
 As in MATLAB, the detector's t threshold is computed once per session and alpha and shared with
 every later 'speedup' detection (``detect.clear_speedup_cache`` starts a new session).
+
+``estimate_sigma3d`` is registered with the lab's interface (``rt`` and ``FileName`` by position,
+no validators); the MATLAB-name layer gives MATLAB's outputs (1-based positions, the mask in
+MATLAB's layout).
 """
 
 from __future__ import annotations
@@ -15,6 +19,8 @@ from __future__ import annotations
 import os
 
 import numpy as np
+
+from petakit5d.params import Param, register
 
 __all__ = ["estimate_sigma3d", "psf_volume", "z_aniso_sigma"]
 
@@ -33,16 +39,45 @@ def psf_volume(path_or_volume) -> np.ndarray:
     return v
 
 
+def _sigma_to_matlab(result: tuple) -> tuple:
+    """MATLAB's outputs: XYZ and the detections with 1-based positions, the mask (y, x, z)"""
+    from petakit5d.core.arrays import to_matlab
+    from petakit5d.detection.run import to_matlab_fields
+
+    sxy, sz, xyz, ps, mask = result
+    return sxy, sz, {k: v + 1 for k, v in xyz.items()}, to_matlab_fields(ps), to_matlab(mask)
+
+
+@register(
+    "GU_estimateSigma3D",
+    Param("rt", None, "The bead image's file (or, in the port, its volume).", py="path_or_volume"),
+    Param("FileName", None, "A file name appended to rt ([]: rt is the file)."),
+    Param("rounds", None, "Detection rounds (3, as MATLAB).", python_only=True),
+    Param(
+        "start", None, "The first round's sigmas [xy z] ([1.2 2.5], as MATLAB).", python_only=True
+    ),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    task="C02",
+    matlab_out=_sigma_to_matlab,
+)
 def estimate_sigma3d(
-    path_or_volume, *, rounds: int = 3, start=(1.2, 2.5), num_threads: int | None = None
+    path_or_volume,
+    file_name=None,
+    *,
+    rounds: int = 3,
+    start=(1.2, 2.5),
+    num_threads: int | None = None,
 ) -> tuple[float, float, dict, dict, np.ndarray]:
-    """``[sigmaXY, sigmaZ, XYZ, pstruct, mask] = GU_estimateSigma3D(file, [])``.
+    """``[sigmaXY, sigmaZ, XYZ, pstruct, mask] = GU_estimateSigma3D(rt, FileName)``.
 
     Returns the brightest detection's ``sigma_xy`` and ``sigma_z`` (voxels), its position
     ``{'x', 'y', 'z'}`` (0-based, x along the last axis), and the last round's detections and
-    mask. A tie of brightest detections, which MATLAB would carry on as vectors, raises."""
+    mask. A tie of brightest detections, which MATLAB would carry on as vectors, raises. A
+    ``file_name`` is appended to the path as MATLAB's ``[rt FileName]``."""
     from petakit5d.detection import detect
 
+    if file_name is not None and np.size(file_name) != 0:
+        path_or_volume = str(path_or_volume) + str(file_name)
     vol = psf_volume(path_or_volume)
     sigma = (float(start[0]), float(start[1]))
     ps: dict = {}

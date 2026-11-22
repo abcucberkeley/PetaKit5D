@@ -348,6 +348,11 @@ PROBED = [
       for k in ("LSImageCh", "BackgroundCh") for c in range(1, 5)],
     ("deskewData", "Save16bit", [DS_MOVIE], "pair", {}),
     ("deskewData", "ZoffsetCorrection", [DS_MOVIE], "pair", {}),
+    ("rotateTracks3D", "Overwrite", [NO_MOVIES], "pair", {}),
+    ("rotateTracks3D", "ProcessedTracks", [NO_MOVIES], "pair", {"default": "ProcessedTracks.mat"}),
+    ("rotateTracks3D", "RotatedTracks", [NO_MOVIES], "pair", {"default": "RotatedTracks.mat"}),
+    ("rotateTracks3D", "ResultsPath", [NO_MOVIES], "pair", {"cell_path": mcell("results/")}),
+    ("rotateTracks3D", "Crop", [NO_MOVIES], "pair", {}),
 ]  # fmt: skip
 
 

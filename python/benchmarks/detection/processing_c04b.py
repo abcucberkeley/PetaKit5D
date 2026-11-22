@@ -41,7 +41,7 @@ def main() -> None:
         t0 = time.perf_counter()
         run_track_processing(data, overwrite=True, results_path=[rp])
         t1 = time.perf_counter()
-        rotate_tracks(data, overwrite=True, results_path=[rp])
+        rotate_tracks(data, overwrite=True, results_path=[rp], crop=False)
         t2 = time.perf_counter()
         t_proc.append(t1 - t0)
         t_rot.append(t2 - t1)

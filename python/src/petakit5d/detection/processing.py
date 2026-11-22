@@ -1359,12 +1359,45 @@ def _rotate_v73(src: str, dst: str, T) -> None:
                     rotate(obj, b == "endBuffer")
 
 
+@register(
+    "rotateTracks3D",
+    # third-party code (its header names an outside author): its interface, with the port's own
+    # checks (accepts=) made from MATLAB's behaviour (tests/params/test_third_party_checks.py);
+    # the options the port takes at their defaults only raise NotImplementedError otherwise
+    Param("data", None, "Movies (the structure XR_loadConditionData3D returns).", convert="same"),
+    Param("Overwrite", None, "Rotate the movies whose result exists again.", accepts="logical"),
+    Param("ProcessedTracks", None, "Not ported: the default only.", accepts="char"),
+    Param(
+        "RotatedTracks",
+        None,
+        "Not ported: the default only.",
+        py="rotated_tracks_file",
+        accepts="char",
+    ),
+    Param(
+        "ResultsPath",
+        None,
+        "Results folder of each movie (default <source>/Analysis/).",
+        matlab_default="arrayfun(@(i) [i.source 'Analysis' filesep], data, 'unif', 0)",
+        accepts="cell",
+    ),
+    Param("Crop", None, "Crop the rotated volume (false only: give it).", accepts="logical"),
+    Param(
+        "matlab_quirks",
+        None,
+        "MATLAB's rotation of a reversed scan's tracks by the forward angle (W20).",
+        python_only=True,
+    ),
+    task="C04",
+)
 def rotate_tracks(
     data,
     *,
     overwrite: bool = False,
-    crop: bool = False,
+    processed_tracks: str = "ProcessedTracks.mat",
+    rotated_tracks_file: str = "RotatedTracks.mat",
     results_path=None,
+    crop: bool = True,
     matlab_quirks: bool = False,
 ) -> None:
     """``rotateTracks3D(data, 'Crop', false, ...)``: ``<results>/RotatedTracks.mat`` (v7.3,
@@ -1381,6 +1414,14 @@ def rotate_tracks(
     from petakit5d.io import read_tiff
     from petakit5d.io.matfile import StructArray, mat_version, read_mat, write_mat
 
+    for name, value, default in (
+        ("ProcessedTracks", processed_tracks, "ProcessedTracks.mat"),
+        ("RotatedTracks", rotated_tracks_file, "RotatedTracks.mat"),
+    ):
+        if value != default:
+            raise NotImplementedError(
+                f"rotate_tracks: {name} {value!r}: only the default is ported"
+            )
     if bool(np.asarray(crop).ravel()[0]):
         raise NotImplementedError("rotateTracks3D: 'Crop' true is not ported")
     movies = _movies(data)
