@@ -9,7 +9,7 @@ a C/C++17 compiler with OpenMP and about a minute to build its C++ modules.
 |---|---|---|
 | Linux x86-64 | GCC 9 or newer (or Clang with libomp) | nothing |
 | macOS (Apple silicon) | Apple Clang (Xcode command line tools) | `brew install libomp` |
-| Windows x86-64 | MSVC from Visual Studio 2022 ("Desktop development with C++") | nothing |
+| Windows x86-64 | MinGW-builds' GCC 12.2.0 with the UCRT (`bash tools/get_mingw.sh` fetches it), else MSVC from Visual Studio 2022 ("Desktop development with C++"): [platforms](../platforms.md), "Windows: the toolchain of a source build" | nothing |
 
 From a clone of the repository, in a fresh virtual environment:
 

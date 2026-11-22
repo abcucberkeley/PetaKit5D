@@ -25,3 +25,42 @@ ninja.version = ">=1.11"
 wheel.packages = ["src/petakit5d_fftw"]
 # the libraries are loaded with ctypes-like dlopen by petakit5d, not imported: no ABI tag of Python's
 wheel.py-api = "py3"
+
+# Windows: the toolchain of a source build as petakit5d's (its pyproject.toml has why): MinGW-builds'
+# GCC 12.2.0 with the UCRT where cmake/Pk5dToolchain.cmake finds it, else MSVC at the second attempt;
+# not when the environment names a toolchain, nor with PETAKIT5D_WINDOWS_TOOLCHAIN=msvc;
+# PETAKIT5D_WINDOWS_TOOLCHAIN=mingw takes that toolchain or fails
+[[tool.scikit-build.overrides]]
+if.platform-system = "^win32"
+if.failed = false
+if.env.CC = false
+if.env.CXX = false
+if.env.CMAKE_GENERATOR = false
+if.env.CMAKE_ARGS = false
+if.env.CMAKE_TOOLCHAIN_FILE = false
+if.env.PETAKIT5D_WINDOWS_TOOLCHAIN = false
+cmake.args = ["-GNinja"]
+cmake.define.PK5D_WINDOWS_TOOLCHAIN = "default"
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "^win32"
+if.failed = true
+if.env.CC = false
+if.env.CXX = false
+if.env.CMAKE_GENERATOR = false
+if.env.CMAKE_ARGS = false
+if.env.CMAKE_TOOLCHAIN_FILE = false
+if.env.PETAKIT5D_WINDOWS_TOOLCHAIN = false
+cmake.define.PK5D_WINDOWS_TOOLCHAIN = "fallback"
+messages.after-failure = "petakit5d-fftw: neither MinGW-builds' GCC 12.2.0 with the UCRT (bash tools/get_mingw.sh in petakit5d fetches it) nor MSVC (Visual Studio 2022 or newer) built the libraries: their logs are above"
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "^win32"
+if.env.CC = false
+if.env.CXX = false
+if.env.CMAKE_GENERATOR = false
+if.env.CMAKE_ARGS = false
+if.env.CMAKE_TOOLCHAIN_FILE = false
+if.env.PETAKIT5D_WINDOWS_TOOLCHAIN = "^mingw$"
+cmake.args = ["-GNinja"]
+cmake.define.PK5D_WINDOWS_TOOLCHAIN = "mingw"

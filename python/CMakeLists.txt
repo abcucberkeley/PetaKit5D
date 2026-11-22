@@ -9,6 +9,13 @@
 #                                         PYTHONPATH=python/src PETAKIT5D_EXT_DIR=<build>/petakit5d/_ext
 cmake_minimum_required(VERSION 3.26...4.2)
 
+# Windows: the compilers of a source build, chosen before project() enables the languages
+# (cmake/Pk5dToolchain.cmake: MinGW-builds' GCC 12.2.0 with the UCRT where it is found, else MSVC)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pk5dToolchain.cmake")
+if(CMAKE_HOST_WIN32)
+  pk5d_windows_toolchain()
+endif()
+
 project(petakit5d LANGUAGES C CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)

@@ -1,0 +1,12 @@
+# W03 trial: cmake/Pk5dToolchain.cmake's check on real toolchains (PK5D_GCCS) and its choice with
+# the runner's PATH and LOCALAPPDATA (cmake -DPK5D_MODULE=... -DPK5D_GCCS=... -P probe.cmake)
+cmake_minimum_required(VERSION 3.26)
+include("${PK5D_MODULE}")
+foreach(_g IN LISTS PK5D_GCCS)
+  pk5d_mingw_toolchain_check("${_g}" _ok _why)
+  message(STATUS "W03 CHECK ${_ok}: ${_g}: ${_why}")
+endforeach()
+set(CMAKE_GENERATOR Ninja)
+set(PK5D_WINDOWS_TOOLCHAIN default)
+pk5d_windows_toolchain()
+message(STATUS "W03 CHOICE: C ${CMAKE_C_COMPILER}, C++ ${CMAKE_CXX_COMPILER}: ${PK5D_TOOLCHAIN_WHY}")
