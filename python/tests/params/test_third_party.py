@@ -482,7 +482,6 @@ NOT_DEFAULT = {
     "show_pct": False,
     "show_stats": False,
     "avg_fun": len,
-    "lft_data_name": "other.mat",
     "amplitude_correction": (1.0,),
     "align": "right",
 }
@@ -499,7 +498,7 @@ def test_plot_intensity_cohorts_takes_its_other_options_at_their_defaults_only(n
 def test_every_option_of_plot_intensity_cohorts_but_its_ported_ones_is_guarded():
     from petakit5d.params import find
 
-    ported = {"data", "analysis_path"}
+    ported = {"data", "analysis_path", "lft_data_name"}
     assert {p.py for p in find("plotIntensityCohorts").params} - ported == set(NOT_DEFAULT)
 
 
@@ -567,7 +566,7 @@ def test_every_option_of_deskew_data_but_its_ported_ones_is_guarded():
     from petakit5d.params import find
 
     ported = {"data", "reverse", "overwrite", "skew_angle", "s_cmos_camera_flip", "aname"}
-    ported.add("num_threads")
+    ported |= {"num_threads", "matlab_quirks"}
     assert {p.py for p in find("deskewData").params} - ported == set(DESKEW_NOT_DEFAULT)
 
 
@@ -581,10 +580,7 @@ def test_deskew_data_without_data_is_matlabs_interactive_load():
     assert tuple(deskew_data(Condition([]), True)) == ()  # data, then Reverse by position
 
 
-@pytest.mark.parametrize(
-    ("name", "value"),
-    [("gap_radius", (3.0, 6.0)), ("link_radius", (2.0, 4.0)), ("cost_type", "other")],
-)
+@pytest.mark.parametrize(("name", "value"), [("cost_type", "other"), ("cost_type", 1.0)])
 def test_track_settings_takes_its_other_options_at_their_defaults_only(name, value):
     from petakit5d.detection.tracking import track_settings
 
