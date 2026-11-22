@@ -5,12 +5,14 @@ name: Wheels
 #   - petakit5d for Linux x86-64 (manylinux_2_28, in the image pyproject.toml pins), macOS arm64
 #     and Windows x86-64, for CPython 3.11 and 3.12 (abi3: 3.12 and newer), with cibuildwheel from
 #     [tool.cibuildwheel] in python/pyproject.toml: each wheel repaired, audited (abi3audit) and
-#     tested by its test command, then checked by python/tools/check_wheel.py; Windows twice, with
-#     MSVC and with MinGW-w64's GCC (the toolchain of the cpp-zarr and cpp-tiff wheels; artifact
-#     petakit5d-Windows-X64-mingw), until one is chosen (python/docs/decisions/0011);
+#     tested by its test command, then checked by python/tools/check_wheel.py. Windows' release
+#     wheels are MinGW-w64's: MinGW-builds' GCC 12.2.0 with the UCRT, the toolchain of the cpp-zarr
+#     and cpp-tiff wheels (the user's decision of 2026-11-21, python/docs/decisions/0011); MSVC's
+#     are built, tested and checked too, as the check of a source build with Visual Studio
+#     (artifacts ...-Windows-X64-msvc), and not released;
 #   - the source distribution (no cpp/fft/exact/), and a wheel built from it alone and tested;
 #   - the exact FFT add-on (python/cpp/fft/exact, GPL): one py3 wheel per platform, tested and
-#     checked the same way.
+#     checked the same way, Windows' with MinGW-w64 too, and with MSVC (-msvc).
 # Runs for release tags, trial branches and by hand; the test branch's pushes don't run it.
 on:
   push:
@@ -41,12 +43,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
-        # the system's usual compiler; Windows also with MinGW-w64's GCC
-        toolchain: ['']
         include:
-          - os: windows-2025
-            toolchain: mingw
+          - os: ubuntu-24.04
+          - os: macos-15
+          # the release wheels: MinGW-builds' GCC 12.2.0 (UCRT)
+          - {os: windows-2025, toolchain: mingw}
+          # built, tested and checked, not released: a source build's fallback
+          - {os: windows-2025, toolchain: msvc}
+    # the toolchain of the Windows build (python/docs/platforms.md): mingw takes MinGW-builds' GCC
+    # 12.2.0 or fails, msvc MSVC; cibuildwheel's Windows builds see the job's environment (empty
+    # elsewhere: ignored)
+    env:
+      PETAKIT5D_WINDOWS_TOOLCHAIN: ${{ matrix.toolchain }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -60,18 +68,21 @@ jobs:
       - name: Install cibuildwheel
         run: python -m pip install "$CIBUILDWHEEL"
 
-      # MinGW-w64: MinGW-builds' GCC 12.2.0 (UCRT), pinned by SHA-256, first on PATH, with CC, CXX and
-      # CMAKE_GENERATOR=Ninja for cibuildwheel's builds; the wheels carry its libgomp-1.dll,
-      # libwinpthread-1.dll and libgcc_s_seh-1.dll next to the modules (python/cmake/Pk5dOpenMP.cmake)
+      # MinGW-w64: MinGW-builds' GCC 12.2.0 (UCRT), pinned by SHA-256, first on PATH, where the build
+      # takes it (PETAKIT5D_WINDOWS_TOOLCHAIN=mingw, python/cmake/Pk5dToolchain.cmake); the wheels
+      # carry its libgomp-1.dll, libwinpthread-1.dll and libgcc_s_seh-1.dll next to the modules
+      # (python/cmake/Pk5dOpenMP.cmake)
       - name: MinGW-w64's GCC (Windows, MinGW)
         if: matrix.toolchain == 'mingw'
-        run: bash tools/get_mingw.sh "$RUNNER_TEMP/mingw"
+        run: |
+          bash tools/get_mingw.sh "$RUNNER_TEMP/mingw" | tee "$RUNNER_TEMP/mingw.txt"
+          tail -n 1 "$RUNNER_TEMP/mingw.txt" >> "$GITHUB_PATH"
 
       # Windows: delvewheel bundles the first copy of a DLL on PATH, so the C++ runtime of the
       # toolset that builds the modules goes first: the system's msvcp140.dll can be older than
       # the toolset, and a runtime older than the toolset is unsupported
       - name: The toolset's C++ runtime (Windows)
-        if: runner.os == 'Windows' && matrix.toolchain != 'mingw'
+        if: matrix.toolchain == 'msvc'
         continue-on-error: true
         run: |
           vs=$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest \
@@ -113,10 +124,11 @@ jobs:
       - name: Release checks
         run: python tools/check_wheel.py wheelhouse
 
+      # (the release's names for MinGW-w64's wheels; MSVC's with -msvc)
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: petakit5d-${{ runner.os }}-${{ runner.arch }}${{ matrix.toolchain && format('-{0}', matrix.toolchain) || '' }}
+          name: petakit5d-${{ runner.os }}-${{ runner.arch }}${{ matrix.toolchain == 'msvc' && '-msvc' || '' }}
           path: python/wheelhouse/*.whl
           if-no-files-found: warn
 
@@ -168,17 +180,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
-        toolchain: ['']
         include:
-          - os: windows-2025
-            toolchain: mingw
+          - os: ubuntu-24.04
+          - os: macos-15
+          # the release wheel: MinGW-builds' GCC 12.2.0 (UCRT), as petakit5d's
+          - {os: windows-2025, toolchain: mingw}
+          - {os: windows-2025, toolchain: msvc}
     # (a job's defaults replace the workflow's: the shell too)
     defaults:
       run:
         shell: bash
         working-directory: python/cpp/fft/exact
     env:
+      # the toolchain of the Windows build, as petakit5d's (empty elsewhere: ignored)
+      PETAKIT5D_WINDOWS_TOOLCHAIN: ${{ matrix.toolchain }}
       # one py3-none wheel per platform serves every Python: built and tested once
       CIBW_BUILD: cp312-*
       CIBW_SKIP: '*-musllinux_*'
@@ -209,9 +224,12 @@ jobs:
       - name: Install cibuildwheel
         run: python -m pip install "$CIBUILDWHEEL"
 
+      # first on PATH, where the add-on's build takes it (PETAKIT5D_WINDOWS_TOOLCHAIN=mingw, as petakit5d's)
       - name: MinGW-w64's GCC (Windows, MinGW)
         if: matrix.toolchain == 'mingw'
-        run: bash ../../../tools/get_mingw.sh "$RUNNER_TEMP/mingw"
+        run: |
+          bash ../../../tools/get_mingw.sh "$RUNNER_TEMP/mingw" | tee "$RUNNER_TEMP/mingw.txt"
+          tail -n 1 "$RUNNER_TEMP/mingw.txt" >> "$GITHUB_PATH"
 
       - name: Build, repair and test
         run: python -m cibuildwheel --output-dir wheelhouse .
@@ -222,6 +240,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: petakit5d-fftw-${{ runner.os }}-${{ runner.arch }}${{ matrix.toolchain && format('-{0}', matrix.toolchain) || '' }}
+          name: petakit5d-fftw-${{ runner.os }}-${{ runner.arch }}${{ matrix.toolchain == 'msvc' && '-msvc' || '' }}
           path: python/cpp/fft/exact/wheelhouse/*.whl
           if-no-files-found: warn
