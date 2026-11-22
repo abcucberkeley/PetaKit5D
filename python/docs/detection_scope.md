@@ -168,8 +168,8 @@ s_pstd, c_pstd, x_init, y_init, z_init, sigma_r, SE_sigma_r, RSS, pval_Ar, hval_
 isPSF` and the mask (logical, the frame's size). `XR_runDetection3D*` writes them, with both
 channels in each field's rows and the tracker's coordinates (`zCoord` = z times `zAniso`), to
 `Detection3D.mat` (`frameInfo`), and the masks to `Masks/dmask_NN.tif`; the Amira writer of the
-detections fails with the warning "Write to Amira failed, Skip it!" and leaves an empty
-`Amira/Detection` folder (MATLAB's behaviour at 45b2bb1).
+detections fails with a warning without identifier (third-party code: its text is not kept
+here) and leaves an empty `Amira/Detection` folder (MATLAB's behaviour at 45b2bb1).
 
 **Quirks for C02:**
 
@@ -392,8 +392,8 @@ distributions within a proposed tolerance").
 
 1. `XR_runDetTrack3d` drops unknown options: the multiple-experiments demo's
    `'zoffsetCorrection', true` (the PDF documentation's spelling too) does nothing.
-2. The detection's Amira output fails ("Write to Amira failed, Skip it!") and leaves an empty
-   folder.
+2. The detection's Amira output fails (a warning without identifier, its third-party text
+   not kept here) and leaves an empty folder.
 3. The t threshold cache (section 3.4).
 4. `data.date` comes from digits in the path.
 5. MATLAB's `tcdf`, `tinv`, `chi2inv` and `fcdf` are less exact than SciPy's in places
