@@ -1,16 +1,26 @@
 """The fitGaussian3D mex's fits (task C02b), estGaussianAmplitude3D and conv3fast, and
 XR_fitGaussian3D's CD_Newton fit at the box (task C02d: the box's end at the last valid plane,
 the stop test of a fit held there, the standard deviations of a negative entry on the
-covariance's diagonal), against MATLAB R2024b through the oracle harness, and their rules (no
-MATLAB).
+covariance's diagonal) and its stop test's absolute bound and iteration limit (task C08),
+against MATLAB R2024b through the oracle harness, and their rules (no MATLAB).
 
 The mex has no source; the port's fits are written from the method (Levenberg-Marquardt least
 squares in Moré's trust-region form) and from the mex's measured behaviour. Its linear modes
 land within a few ulps of MATLAB's (parity D4), its nonlinear ones within the noise of the
 trust-region path's stopping point (D5). estGaussianAmplitude3D and conv3fast are bit for bit.
+
+The stop test's cases (task C08) are designed weak spots at three scales (the window and the
+start's A and c times 1/4, 1 and 4: every RSS of the fit scales exactly, so an absolute bound
+on its change stops each scale elsewhere), designs at 1/64 and 1/256 of their values that take
+more than 500 iterations (MATLAB's limit is 2,000) and, with the demo data (``demodata``),
+windows of track processing's recorded calls on the multiple demo's frames, cut from the frames
+as the port deskews them.
 """
 
 import decimal
+import functools
+import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -185,9 +195,10 @@ def _grid_m(shape_m):
     return X, Y, Z
 
 
-def _py_cd(win_m, X, Y, Z, p0, mode, n):
-    """XR_fitGaussian3D(win, X, Y, Z, p0, 'xyzAc', 10) as XR_fitGaussians3D calls it: the fit's
-    parameters and the standard deviations of x, y, z, A and c"""
+def _py_cd(win_m, X, Y, Z, p0, mode, n=10):
+    """XR_fitGaussian3D(win, X, Y, Z, p0, 'xyzAc', 10) as XR_fitGaussians3D calls it (track
+    processing calls it without the 10: the same results, task C08): the fit's parameters and the
+    standard deviations of x, y, z, A and c"""
     R = fit.fit_cd([np.ascontiguousarray(from_matlab(win_m))], np.reshape(p0, (1, 7)))
     return [R.prm, R.pstd[:, [0, 1, 2, 3, 6]]]
 
@@ -214,6 +225,136 @@ def _cd_cases():
                     "Z": Value(lambda Z=Z: Z),
                 },
                 compare={0: TOL_CD, 1: TOL_CD},
+            )
+        )
+    return cs
+
+
+# -- XR_fitGaussian3D's stop test (task C08) ------------------------------------------------------
+# MATLAB's fit stops when the RSS drops by less than 1e-7 of the first RSS with a step below
+# 1e-4, or changes by less than 1e-6 in absolute value. The designs: weak spots whose fits that
+# absolute bound stops where a bound relative to the first RSS would not, and the same windows
+# scaled (the window and the start's A and c times a power of 2: every RSS scales exactly, so
+# MATLAB's stop moves with the scale)
+STOP_DESIGNS = (262, 355, 460)  # 1e-6 stops them at scale 1, an iteration before 1e-10 of rss0
+STOP_SCALES = (0.25, 1.0, 4.0)
+# MATLAB's iteration limit, 2,000: designs whose values times 1/64 or 1/256 take more than 500
+# iterations (the 1e-6 bound no longer stops a slow creep at such values): 1,104 and 2,000 (the
+# limit) at 1/64, 1,232 at 1/256 (probe d1: 22 of 29 such designs end at MATLAB's)
+ITER_DESIGNS = ((3, 1 / 64), (76, 1 / 64), (572, 1 / 256))
+
+
+def stop_window(i, scale=1.0):
+    """(z, y, x) window of design i of C08's search and its start (the detector's: the window's
+    centre, its peak over its median, the median), both scaled: a weak spot (A 1.5 to 8) on a
+    background of 100 with normal noise of 1.5 to 4, rounded"""
+    shape = (7, 7, 7)
+    r = synth.CounterRNG(2026, f"C08.stop.{i}").uniform((6,))
+    centre = (1.5 + 4 * r[0], 1.5 + 4 * r[1], 1.5 + 4 * r[2])
+    A = 1.5 + 6.5 * r[3]
+    noise = 1.5 + 2.5 * r[4]
+    n = synth.CounterRNG(2026, f"C08.stop.n.{i}").normal(shape)
+    w = np.round(100.0 + A * _gauss(shape, centre) + noise * n)
+    p0 = np.array(
+        [3.0, 3.0, 3.0, float(np.max(w) - np.median(w)), S_CD, SZ_CD, float(np.median(w))]
+    )
+    p0[[3, 6]] *= scale
+    return w * scale, p0
+
+
+# windows of track processing's XR_fitGaussian3D calls in the multiple demo (recorded from MATLAB
+# by task C04c; cut from the deskewed frames without NaN voxels): (experiment, channel, frame,
+# the window's first voxel (x, y, z), 1-based, its size (z, y, x), the start as recorded): of
+# start buffers, gap frames and an end buffer, both channels. The absolute bound stops the first,
+# third and sixth fits an iteration earlier than a bound of 1e-10 of the first RSS did, the
+# others an iteration later
+TP_WINDOWS = (
+    (1, 1, 1, (154, 383, 17), (7, 7, 7),
+     (2.8614374213620124, 3.4149086460757303, 2.863370398251746, -0.8602656859449797,
+      1.3758153893715306, 1.1049523723652759, 102.11125466482194)),
+    (1, 1, 12, (167, 323, 21), (7, 7, 7),
+     (2.814540152204245, 3.443159838042334, 3.368981238942112, 4.46869154016484,
+      1.3758153893715306, 1.1049523723652759, 121.76418163724342)),
+    (2, 2, 6, (158, 162, 10), (7, 9, 9),
+     (3.611760172064919, 4.258375287145782, 2.8022037952041856, -1.5554502840260338,
+      1.6109238767286678, 1.32923089738702, 101.23864363402612)),
+    (2, 1, 6, (208, 89, 8), (7, 7, 7),
+     (3.089398218712205, 3.4527074292107187, 3.2721597571034433, 8.5076634341517,
+      1.3758153893715306, 1.1049523723652759, 166.58607852207825)),
+    (1, 2, 31, (244, 270, 13), (7, 9, 9),
+     (3.8012601717815073, 3.7145234084187564, 2.7373922647664344, -11.263406859290317,
+      1.6109238767286678, 1.32923089738702, 126.31350864622874)),
+    (2, 2, 21, (277, 226, 14), (7, 9, 9),
+     (3.6815542863997166, 3.5061265870119485, 3.182425810789976, 0.6693893528531146,
+      1.6109238767286678, 1.32923089738702, 101.24961641907522)),
+)  # fmt: skip
+DEMO = "$PETAKIT5D_DEMO_DATA/PetaKit5D_point_detection_demo_dataset"
+
+
+def demo_ds_frame(ex: int, ch: int, k: int) -> np.ndarray:
+    """frame k of channel ch of experiment ex of the demo dataset deskewed as the demos' deskewData
+    deskews it (single), as double: the frames track processing reads"""
+    from petakit5d.deskew_rotate.volume import deskew_volume
+    from petakit5d.detection.condition import load_condition_data
+    from petakit5d.io import read_tiff
+
+    root = Path(os.path.expandvars(DEMO))
+    cond = sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith("."))[0]
+    m = load_condition_data(str(cond) + os.sep, ["ch1", "ch2"], ["gfp", "rfp"])[ex - 1]
+    raw = np.asarray(read_tiff(m.frame_paths[ch - 1][k - 1]), dtype=np.float64)
+    ds = deskew_volume(raw, 31.5, float(m.dz), float(m.pixel_size), False, crop=False)
+    return np.asarray(ds.astype(np.float32), dtype=np.float64)
+
+
+@functools.cache
+def tp_window(j) -> np.ndarray:
+    """TP_WINDOWS[j]'s window (z, y, x)"""
+    ex, ch, k, (x0, y0, z0), (nz, ny, nx), _ = TP_WINDOWS[j]
+    v = demo_ds_frame(ex, ch, k)
+    return np.ascontiguousarray(v[z0 - 1 : z0 - 1 + nz, y0 - 1 : y0 - 1 + ny, x0 - 1 : x0 - 1 + nx])
+
+
+def _stop_cases():
+    cs = []
+    designs = [(i, f, f"stop{i}_x{f:g}") for i in STOP_DESIGNS for f in STOP_SCALES]
+    designs += [(i, f, f"iters{i}_x{f:g}") for i, f in ITER_DESIGNS]
+    for i, f, name in designs:
+        w, p0 = stop_window(i, f)
+        wm = to_matlab(w)
+        X, Y, Z = _grid_m(wm.shape)
+        cs.append(
+            Case(
+                f"xr_fit.{name}",
+                matlab="XR_fitGaussian3D",
+                args=[In("win"), In("X"), In("Y"), In("Z"), p0, "xyzAc", 10.0],
+                nargout=2,
+                python=_py_cd,
+                inputs={
+                    "win": Value(lambda wm=wm: wm),
+                    "X": Value(lambda X=X: X),
+                    "Y": Value(lambda Y=Y: Y),
+                    "Z": Value(lambda Z=Z: Z),
+                },
+                compare={0: TOL_CD, 1: TOL_CD},
+            )
+        )
+    for j, (ex, ch, k, _, size, p0) in enumerate(TP_WINDOWS):
+        X, Y, Z = _grid_m((size[1], size[2], size[0]))
+        cs.append(
+            Case(
+                f"xr_fit.demo_ex{ex}_ch{ch}_frame{k}_{j}",
+                matlab="XR_fitGaussian3D",
+                args=[In("win"), In("X"), In("Y"), In("Z"), np.array(p0), "xyzAc"],
+                nargout=2,
+                python=_py_cd,
+                inputs={
+                    "win": Value(lambda j=j: to_matlab(tp_window(j))),
+                    "X": Value(lambda X=X: X),
+                    "Y": Value(lambda Y=Y: Y),
+                    "Z": Value(lambda Z=Z: Z),
+                },
+                compare={0: TOL_CD, 1: TOL_CD},
+                marks=("demodata",),
             )
         )
     return cs
@@ -317,7 +458,7 @@ def _cases():
     return cs
 
 
-CASES = _cases() + _cd_cases()
+CASES = _cases() + _cd_cases() + _stop_cases()
 
 
 @oracle.parametrize(CASES)
@@ -440,6 +581,37 @@ def test_conv3fast_follows_its_rule_on_small_axes():
     v = _rng("conv").normal((5, 3, 2)) * 10
     out = detect.conv3fast(v, [1.0, 0.5], [1.0, 0.25, 0.1], [1.0, 0.4, 0.2, 0.05])
     assert np.array_equal(out, _conv_ref(v, [1.0, 0.5], [1.0, 0.25, 0.1], [1.0, 0.4, 0.2, 0.05]))
+
+
+def test_the_cd_stop_test_bounds_the_rss_change_absolutely():
+    """the designs' fits stop when the RSS changes by less than 1e-6 in their last iteration,
+    with a step above 1e-4 and a change of 1e-10 of the first RSS or more (neither the relative
+    test nor a bound relative to the first RSS stops them there); scaled by 4 (every RSS 16 times
+    larger) they take more iterations (task C08: MATLAB's ends at the three scales)"""
+    for i in STOP_DESIGNS:
+        w, p0 = stop_window(i)
+        R = fit.fit_cd([w], p0[None, :])
+        k = int(R.iterations[0])
+        R1 = fit.fit_cd([w], p0[None, :], max_iter=k - 1)
+        rss0 = fit.fit_cd([w], p0[None, :], max_iter=0).rss[0]
+        d = abs(R1.rss[0] - R.rss[0])
+        assert 1e-10 * rss0 <= d < 1e-6, i
+        assert np.max(np.abs(R.prm[0, :3] - R1.prm[0, :3])) > 1e-4, i
+        w4, p4 = stop_window(i, 4.0)
+        assert int(fit.fit_cd([w4], p4[None, :]).iterations[0]) > k, i
+
+
+def test_the_cd_fit_stops_at_2000_iterations():
+    """at 1/64 and 1/256 of their values the designs ITER_DESIGNS take more than 500 iterations,
+    the second the 2,000 of MATLAB's limit, so a limit of 500 leaves them elsewhere (task C08:
+    MATLAB's ends, oracle cases xr_fit.iters*)"""
+    for i, f in ITER_DESIGNS:
+        w, p0 = stop_window(i, f)
+        R = fit.fit_cd([w], p0[None, :])
+        k = int(R.iterations[0])
+        assert 500 < k <= 2000 and (k == 2000) == (i == 76), (i, k)
+        R5 = fit.fit_cd([w], p0[None, :], max_iter=500)
+        assert np.max(np.abs(R5.prm - R.prm)) > 1e-3, i
 
 
 def test_the_cd_fit_held_on_the_box_goes_on_while_a_and_c_move():

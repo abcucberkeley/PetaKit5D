@@ -12,7 +12,7 @@ to its step (``STEPS``, first match) and compared with ``petakit5d.testing.compa
 voxels and tags, .mat values, text; the Amira files (``*.am``) by their numbers.
 
 The tolerances are the parity rows of ``docs/parity/detection.md``, for the step's own
-differences, and end to end the proposed row E1 (``docs/parity/phase3.md``) for those it
+differences, and end to end the row E1 (``docs/parity/phase3.md``) for those it
 inherits from the steps before it: the PSF sigmas (D6) feed the detection, whose fits (D3) feed
 the tracks' coordinates, the track processing (whose own fits are W11 and W12), the rotation
 and the lifetime analysis (whose threshold is L4, the cohorts' amplitudes L7; its files are
@@ -123,7 +123,7 @@ def tolerances(matlab_inputs: bool = False) -> dict:
         out |= {"*/Detection3D.mat": fits, "*/Detections/*.mat": fits}
     else:
         track_fits = tol(
-            reason="E1 (proposed): the demos end to end, the fits from each side's PSF sigmas "
+            reason="E1 (approved): the demos end to end, the fits from each side's PSF sigmas "
             "(D6) and what is made from them",
             rel=E2E_REL,
             abs=E2E_ABS,
@@ -164,11 +164,11 @@ def lifetime_specs(matlab_inputs: bool = False) -> tuple[dict, object]:
     cohort = tol(reason="L7 (approved): the scaled cohorts", rel=COHORT_REL, abs=COHORT_ABS)
     other = EXACT
     if not matlab_inputs:
-        e1 = "; E1 (proposed): the demos end to end"
+        e1 = "; E1 (approved): the demos end to end"
         threshold = tol(reason=threshold.reason + e1, rel=THRESHOLD_REL, abs=E2E_ABS)
         cohort = tol(reason=cohort.reason + e1, rel=COHORT_REL, abs=max(COHORT_ABS, E2E_ABS))
         other = tol(
-            reason="E1 (proposed): the demos end to end, the lifetimes of each side's tracks",
+            reason="E1 (approved): the demos end to end, the lifetimes of each side's tracks",
             rel=E2E_REL,
             abs=E2E_ABS,
         )
