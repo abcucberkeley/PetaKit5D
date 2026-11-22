@@ -16,7 +16,9 @@ The API for other stages (track processing reads amplitudes out with the same fi
   ``FitCD`` arrays (one row per window). The positions are held from the window's first voxel
   to its last valid one on each axis; a fit held there goes on while A and c move; standard
   deviations of a negative entry on C's diagonal are the magnitude of the complex root (as
-  MATLAB's, task C02d; docs/parity/detection.md).
+  MATLAB's, task C02d; docs/parity/detection.md). A fit stops when the RSS drops by less than
+  1e-7 of the first RSS with a step below 1e-4, or changes by less than 1e-6 in absolute value
+  (an absolute bound, as MATLAB's: task C08).
 - ``fit_gaussians3d(vol, xyz, A, sigma, c, ...)``: MATLAB's ``XR_fitGaussians3D`` on a volume.
 
 Positions are named: ``x`` along the array's last axis, ``y`` the middle one, ``z`` the first.
@@ -116,10 +118,12 @@ def _pack(windows) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return vals, dims, nvalid
 
 
-def fit_cd(windows, p0, *, max_iter: int = 500, num_threads: int | None = None) -> FitCD:
+def fit_cd(windows, p0, *, max_iter: int = 2000, num_threads: int | None = None) -> FitCD:
     """``XR_fitGaussian3D(win, X, Y, Z, p0, 'xyzAc', ...)`` with method ``'CD_Newton'`` on each
     window (a ``(z, y, x)`` array, NaN for voxels left out; its X, Y, Z the 0-based voxel
-    coordinates): position, amplitude and background fitted, sigmas fixed. ``p0`` (k, 7)."""
+    coordinates): position, amplitude and background fitted, sigmas fixed. ``p0`` (k, 7).
+    ``max_iter``: MATLAB's 2,000 iterations, where its fits that do not converge stop (task C08;
+    no fit of the demo data takes 500)."""
     p = np.ascontiguousarray(np.asarray(p0, dtype=np.float64).reshape(-1, 7))
     vals, dims, nvalid = _pack(windows)
     if p.shape[0] != vals.shape[0]:
