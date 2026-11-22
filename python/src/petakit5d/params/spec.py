@@ -162,8 +162,9 @@ def validator_alternatives(validator: str | None) -> list[frozenset[str]] | None
     """The validator as alternatives, each a set of class predicates that must all hold.
 
     ``@(x) ischar(x) || iscell(x)`` -> [{ischar}, {iscell}]; ``@isnumeric`` -> [{isnumeric}];
-    ``@(x) isnumeric(x) && numel(x) == 3`` -> [{isnumeric}] (other terms are not checked);
-    None means no check (no validator, or one this reading does not understand).
+    ``@(x) isnumeric(x) && numel(x) == 3`` -> [{isnumeric}] (the command-line conversion and the
+    cell hint read these; a text with other terms is checked whole, ``params.conditions``);
+    None means no class check (no validator, or one this reading does not understand).
     """
     if not validator:
         return None
@@ -666,7 +667,11 @@ class _Record:
         return all(getattr(self, f) == getattr(other, f) for f in self._fields)
 
     def __repr__(self) -> str:
-        shown = ", ".join(f"{f}={getattr(self, f)!r}" for f in self._fields if f != "alternatives")
+        shown = ", ".join(
+            f"{f}={getattr(self, f)!r}"
+            for f in self._fields
+            if f not in ("alternatives", "condition")
+        )
         return f"{type(self).__name__}({shown})"
 
 
@@ -743,7 +748,8 @@ class ParamSpec(_Record):
     required arguments, else in Python's form); alternatives: the validator's class checks
     (validator_alternatives), or those of the port's own check (accepts_alternatives); conv:
     the conversion kind (``kinds.Kind``) or None; accepts: the port's own check (third-party
-    code), or None.
+    code), or None; condition: the validator read whole where it has terms beyond class
+    predicates (``params.conditions.read``: its check replaces the alternatives'), or None.
     """
 
     __slots__ = _SPEC_FIELDS = (
@@ -760,9 +766,10 @@ class ParamSpec(_Record):
         "alternatives",
         "conv",
         "accepts",
+        "condition",
     )
     _fields = _SPEC_FIELDS
-    _defaults = {"alternatives": None, "conv": None, "accepts": None}
+    _defaults = {"alternatives": None, "conv": None, "accepts": None, "condition": None}
     matlab: str
     py: str
     kind: str
@@ -776,12 +783,22 @@ class ParamSpec(_Record):
     alternatives: list[frozenset[str]] | None
     conv: Any
     accepts: str | None
+    condition: Any
 
     __hash__ = None  # type: ignore[assignment]
 
     @property
     def required(self) -> bool:
         return self.kind == "required"
+
+    def outcome(self, value: Any) -> tuple[bool, str | None]:
+        """(taken, identifier): whether the check takes ``value``; the identifier of MATLAB's
+        error where its check raises one of its own for it, else None"""
+        if self.condition is not None:
+            return self.condition.outcome(value)
+        if self.alternatives is None:
+            return True, None
+        return _takes(self.alternatives, value)
 
     def cell_hint(self) -> str | None:
         """'cell' when a sequence for this parameter is a MATLAB cell, not a numeric array."""
@@ -819,20 +836,21 @@ class ParamSpec(_Record):
         return format_literal(self.to_matlab(self.default), hint)
 
     def check(self, value: Any, fname: str) -> None:
-        """Raise MatlabArgumentError if ``value`` fails the MATLAB validator's class checks
-        (or the port's own check, for third-party code; MatlabCheckError where MATLAB's check
-        raises an error of its own)."""
-        alts = self.alternatives
-        if alts is None:
-            return
-        taken, ident = _takes(alts, value)
+        """Raise MatlabArgumentError if ``value`` fails the MATLAB validator (its class checks,
+        or the whole text where it has other terms) or the port's own check, for third-party
+        code; MatlabCheckError where MATLAB's check raises an error of its own."""
+        taken, ident = self.outcome(value)
         if taken:
             return
         if ident is not None:
+            which = (
+                f"The port's check ({self.accepts})"
+                if self.accepts is not None
+                else f"The function's validator ({_matlab_validator_display(self.validator)})"
+            )
             raise MatlabCheckError(
-                f"The value of '{self.matlab}' is invalid. The port's check ({self.accepts}) "
-                f"refuses it with {ident or 'an error without an identifier'}, as MATLAB's "
-                "check does.",
+                f"The value of '{self.matlab}' is invalid. {which} refuses it with "
+                f"{ident or 'an error without an identifier'}, as MATLAB's check does.",
                 ident,
             )
         must = (
@@ -858,9 +876,17 @@ def _kind_of(d: Param, where: str) -> Any:
 
 
 def _passes(p: ParamSpec, value: Any) -> bool:
-    if p.alternatives is None:
-        return True
-    return _takes(p.alternatives, value)[0]
+    return p.outcome(value)[0]
+
+
+def _condition(validator: str | None) -> Any:
+    """the validator read whole where it has terms beyond class predicates (params.conditions);
+    texts that are no anonymous function, or class predicates only, need no reading"""
+    if not validator or not re.match(r"\s*@\s*\(", validator):
+        return None
+    from petakit5d.params.conditions import read
+
+    return read(validator)
 
 
 def _as_matlab_sees(p: ParamSpec, value: Any) -> Any:
@@ -996,8 +1022,10 @@ class FunctionSpec:
             if key in seen:
                 raise RegistryError(f"{where}: {d.matlab!r} is declared twice")
             seen.add(key)
+            cond = None
             if d.accepts is None:
                 alts = validator_alternatives(d.validator)
+                cond = _condition(d.validator)
                 mcc = d.mcc or mcc_mode(d.validator)
             elif d.validator:
                 raise RegistryError(
@@ -1022,6 +1050,7 @@ class FunctionSpec:
                     alternatives=alts,
                     conv=_kind_of(d, where),
                     accepts=d.accepts,
+                    condition=cond,
                 )
             )
         return out

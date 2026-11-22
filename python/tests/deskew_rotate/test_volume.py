@@ -43,6 +43,7 @@ import pytest
 from petakit5d.core.arrays import from_matlab, size_from_matlab, to_matlab
 from petakit5d.deskew_rotate import geometry as geo
 from petakit5d.deskew_rotate import volume as dv
+from petakit5d.params import MatlabArgumentError
 from petakit5d.testing import oracle, synth
 from petakit5d.testing.cases import (
     Box,
@@ -406,7 +407,7 @@ def _dsr_error_cases() -> list[Case]:
             py_kwargs={"interp_method": "nearest"},
             inputs=v,
             expect_error="MATLAB:InputParser:ArgumentFailedValidation",
-            py_error=ValueError,
+            py_error=MatlabArgumentError,  # the registry's check of the lab's validator
         ),
         Case(
             "dsr.err.resample_two",
@@ -1695,7 +1696,8 @@ def test_matlab_matmul_sums_from_positive_zero():
 
 def test_interp_method_and_resample_errors():
     v = np.zeros((5, 6, 20), dtype=np.float32)
-    with pytest.raises(ValueError) as err:
+    # the registry refuses it first, as inputParser does (the lab's validator read whole)
+    with pytest.raises(MatlabArgumentError) as err:
         dv.deskew_rotate_volume(v, SKEW, 0.3, PX, interp_method="nearest")
     assert err.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
     with pytest.raises(IndexError) as err:
