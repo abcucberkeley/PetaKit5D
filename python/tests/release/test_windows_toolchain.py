@@ -31,6 +31,7 @@ PINNED = "gcc.exe (x86_64-posix-seh-rev2, Built by MinGW-W64 project) 12.2.0"
 RUNNER = "gcc.exe (x86_64-posix-seh-rev0, Built by MinGW-Builds project) 15.2.0"
 MSYS2 = "gcc.exe (Rev2, Built by MSYS2 project) 14.2.0"
 UCRT, MSVCRT = "0xE00", "0x700"
+FAIL = "cc1.exe: libwinpthread-1.dll was not found"
 # the folder of tools/get_mingw.sh's toolchain under LOCALAPPDATA
 GET_MINGW_DIR = "petakit5d/mingw-12.2.0"
 
@@ -99,7 +100,7 @@ def test_the_switch(monkeypatch, project):
         args, define, again, _ = _settings(monkeypatch, project, "win32", on, retry)
         assert (args, define, again) == (["-GNinja"], {"PK5D_WINDOWS_TOOLCHAIN": "mingw"}, False)
         # msvc, and any other value (which the CMake side refuses): scikit-build-core's default
-        for value in ("msvc", "MinGW", "auto"):
+        for value in ("msvc", "MinGW", "auto", "xmingw"):
             env = {"PETAKIT5D_WINDOWS_TOOLCHAIN": value}
             assert _settings(monkeypatch, project, "win32", env, retry)[:3] == ([], {}, False)
 
@@ -139,11 +140,16 @@ def _cmake() -> str:
 
 
 def _compiler(folder: Path, banner: str | None = PINNED, crt: str | None = UCRT, gxx=True) -> Path:
-    """gcc (and g++) in folder: `--version` prints banner (None: fails), `-x c -dM -E <file>` the
-    C library's macros (__MSVCRT_VERSION__ crt; None: none)"""
+    """gcc (and g++) in folder: `--version` prints banner (None: the pinned one, then fails),
+    `-x c -dM -E <file>` the C library's macros (__MSVCRT_VERSION__ crt; None: none; FAIL: fails,
+    as when cc1 can't load its DLLs)"""
     folder.mkdir(parents=True, exist_ok=True)
-    version = f'echo "{banner}"; echo "Copyright (C) the FSF"' if banner else "exit 1"
+    version = (
+        f'echo "{banner}"; echo "Copyright (C) the FSF"' if banner else f'echo "{PINNED}"; exit 1'
+    )
     macros = f'echo "#define _UCRT"; echo "#define __MSVCRT_VERSION__ {crt}"' if crt else "true"
+    if crt == FAIL:
+        macros = f'echo "{FAIL}" >&2; exit 1'
     text = f'#!/bin/sh\ncase "$1" in\n  --version) {version};;\n  -x) {macros};;\n'
     text += "  *) exit 1;;\nesac\n"
     for name in ("gcc", "g++") if gxx else ("gcc",):
@@ -227,8 +233,18 @@ def test_takes_get_mingw_folder_when_the_first_gcc_on_path_is_another(tmp_path):
     [
         (RUNNER, UCRT, True, f"is {RUNNER}"),
         (MSYS2, UCRT, True, f"is {MSYS2}"),
+        # MinGW-builds' other builds: another revision, win32 threads, another 12
+        (PINNED.replace("rev2", "rev1"), UCRT, True, "is " + PINNED.replace("rev2", "rev1")),
+        (PINNED.replace("posix", "win32"), UCRT, True, "is " + PINNED.replace("posix", "win32")),
+        (
+            PINNED.replace("12.2.0", "12.1.0"),
+            UCRT,
+            True,
+            "is " + PINNED.replace("12.2.0", "12.1.0"),
+        ),
         (PINNED, MSVCRT, True, "is MinGW-builds' 12.2.0 for msvcrt.dll, not the UCRT"),
         (PINNED, None, True, "(12.2.0) names no C library (no __MSVCRT_VERSION__)"),
+        (PINNED, FAIL, True, f"(12.2.0) fails to preprocess a C file (1: {FAIL})"),
         (None, UCRT, True, "does not run"),
         (PINNED, UCRT, False, "has no g++ next to it"),
     ],
@@ -358,4 +374,7 @@ def test_get_mingw_fetches_the_toolchain_the_check_takes():
     assert not re.search(rx, RUNNER) and not re.search(rx, MSYS2)
     # the default folder, where the build looks
     assert f"dest=$base/{GET_MINGW_DIR}" in sh
+    # the compiler's programs find their libwinpthread-1.dll off PATH: a copy next to them
+    libexec = f"$dest/mingw64/libexec/gcc/x86_64-w64-mingw32/{version}/"
+    assert f'cp "$dest/mingw64/bin/libwinpthread-1.dll" "{libexec}"' in sh
     assert f'"$ENV{{LOCALAPPDATA}}/{GET_MINGW_DIR}"' in cm

@@ -66,18 +66,18 @@ against an installed wheel in CI (below).
   supports macOS 13.
 - **Windows (the release's wheels, MinGW-w64):** GCC's `libgomp-1.dll` of the toolchain, with the
   DLLs it loads (`libwinpthread-1.dll`, `libgcc_s_seh-1.dll`), next to the modules under their own
-  names (delvewheel finds nothing to copy in). The cpp-zarr and cpp-tiff libraries load the same file
-  by that name, and Windows loads a DLL of a name once per process: one runtime for the three
+  names (delvewheel finds nothing to copy in). The cpp-zarr and cpp-tiff libraries load the same
+  file by that name, and Windows loads a DLL of a name once per process: one runtime for the three
   ([decisions/0011](decisions/0011-windows-toolchain.md)). The build also copies the toolchain's
   notices of them, as it ships them, into `petakit5d/_ext/licenses/` (THIRD_PARTY_NOTICES.md).
 - **Windows, MSVC's wheels (not released):** MSVC's LLVM OpenMP runtime `libomp140.x86_64.dll`.
-  The build copies it next to the modules when the toolset's redistributable folders have it; Visual Studio 2026's (the
-  windows-2025 runners') don't, so delvewheel copies it into `petakit5d.libs/` under a mangled
-  name, with the C++ runtime (`msvcp140.dll`), from the first folder on `PATH` that has them:
-  on the runners System32's libomp140, and for the C++ runtime, unless the workflow puts the
-  toolset's own redistributable one first, any program's copy that comes earlier (a JDK's 14.40
-  in the first trial, older than the 14.51 toolset, which Microsoft does not support and
-  delvewheel warns of). All modules load the one copy of each.
+  The build copies it next to the modules when the toolset's redistributable folders have it;
+  Visual Studio 2026's (the windows-2025 runners') don't, so delvewheel copies it into
+  `petakit5d.libs/` under a mangled name, with the C++ runtime (`msvcp140.dll`), from the first
+  folder on `PATH` that has them: on the runners System32's libomp140, and for the C++ runtime,
+  unless the workflow puts the toolset's own redistributable one first, any program's copy that
+  comes earlier (a JDK's 14.40 in the first trial, older than the 14.51 toolset, which Microsoft
+  does not support and delvewheel warns of). All modules load the one copy of each.
 
 ### The GPU extra
 

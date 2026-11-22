@@ -46,8 +46,9 @@ jobs:
         python: ['3.12', '3.14']
         # Windows: the source build's own choice of toolchain (python/docs/platforms.md, "Windows:
         # the toolchain of a source build"): MinGW-w64 where MinGW-builds' GCC 12.2.0 is (mingw: in
-        # tools/get_mingw.sh's folder for 3.12, first on PATH for 3.14), and else MSVC, at the
-        # second attempt, after the first one left out the runners' own MinGW-w64 (GCC 15, on PATH)
+        # tools/get_mingw.sh's folder with no MinGW-w64 on PATH for 3.12, first on PATH for 3.14),
+        # and else MSVC, at the second attempt, after the first one left out the runners' own
+        # MinGW-w64 (GCC 15, on PATH)
         toolchain: ['']
         include:
           - {os: windows-2025, python: '3.12', toolchain: mingw}
@@ -87,9 +88,17 @@ jobs:
 
       # with the figures (matplotlib) and n5 (numcodecs) extras, so that their tests and oracle
       # cases run (both have wheels for every runner); the pinned environment stays without them
+      # (mingw 3.12: with no MinGW-w64 on PATH at all, the runners' own left out of it, as on a
+      # machine with only tools/get_mingw.sh's toolchain)
       - name: Install
         if: ${{ !(runner.os == 'Linux' && matrix.python == '3.12') }}
+        env:
+          NO_MINGW_ON_PATH: ${{ matrix.toolchain == 'mingw' && matrix.python == '3.12' }}
         run: |
+          if [ "$NO_MINGW_ON_PATH" = true ]; then
+            PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i -x '/c/mingw64/bin' | paste -s -d ':' -)
+            if command -v gcc; then echo "::error::a gcc is still on PATH"; exit 1; fi
+          fi
           python -m pip install --upgrade pip
           python -m pip install -v ".[test,figures,n5]" 2>&1 | tee "$RUNNER_TEMP/pip-install.log"
 
@@ -116,28 +125,13 @@ jobs:
               where = "on PATH" if os.environ["ON_PATH"] == "true" else "in tools/get_mingw.sh's folder"
               assert compiler == "gcc 12.2.0", compiler
               assert took[0].endswith(f"the UCRT {where}: the default of source builds"), took
+              # (the build's own check after project(): this is the pinned toolchain, no warning)
+              assert "CMake Warning at cmake/Pk5dExtension.cmake" not in log, "a toolchain warning"
           else:
               assert compiler.startswith("msvc "), compiler
               assert took[0].endswith("the fallback: the attempt with MinGW-w64 failed (its log is above)"), took
               assert "gcc on PATH: " in log, "the first attempt names no gcc on PATH"
           EOF
-
-      # W03 TRIAL ONLY: every kernel case's digest, the Anderson-Darling cases' outputs as hex
-      - name: W03 trial, the kernel cases (Windows)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        run: |
-          python ../.github/w03_trial/dump_cases.py > "$RUNNER_TEMP/w03_cases.txt"
-          grep -c DIGEST "$RUNNER_TEMP/w03_cases.txt"
-          cat "$RUNNER_TEMP/w03_cases.txt"
-
-      # W03 TRIAL ONLY
-      - uses: actions/upload-artifact@v7
-        if: runner.os == 'Windows' && !cancelled()
-        with:
-          name: w03-cases-${{ matrix.toolchain || 'default' }}-${{ matrix.python }}
-          path: ${{ runner.temp }}/w03_cases.txt
-          if-no-files-found: warn
 
       # the OpenMP runtime the build put next to the modules, and the toolset's copies
       - name: OpenMP runtime (Windows)
@@ -290,110 +284,3 @@ jobs:
         run: |
           squeue || true
           sudo tail -n 100 /var/log/slurm/slurmctld.log /var/log/slurm/slurmd.log
-
-  # W03 TRIAL ONLY: the runner's toolchains as the build's check sees them
-  w03-probe:
-    name: W03 trial, the toolchains (windows-2025)
-    runs-on: windows-2025
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: The runner's gcc, MinGW-builds' 12.2.0 UCRT and msvcrt builds, the check and the choice
-        run: |
-          set -x
-          where gcc || true
-          gcc --version | head -n 1 || true
-          bash tools/get_mingw.sh | tee "$RUNNER_TEMP/m.txt"
-          pinned=$(tail -n 1 "$RUNNER_TEMP/m.txt")/gcc.exe
-          mkdir -p "$RUNNER_TEMP/msvcrt"
-          curl -sSL --fail --retry 3 -o "$RUNNER_TEMP/msvcrt/m.7z" https://github.com/niXman/mingw-builds-binaries/releases/download/12.2.0-rt_v10-rev2/x86_64-12.2.0-release-posix-seh-msvcrt-rt_v10-rev2.7z
-          sha256sum "$RUNNER_TEMP/msvcrt/m.7z"
-          7z x -y -o"$RUNNER_TEMP/msvcrt" "$RUNNER_TEMP/msvcrt/m.7z" > /dev/null
-          msvcrt=$(cygpath -m "$RUNNER_TEMP/msvcrt/mingw64/bin/gcc.exe")
-          runner=$(cygpath -m "$(command -v gcc)")
-          printf '#include <stdio.h>\n' > "$RUNNER_TEMP/p.c"
-          for g in "$runner" "$pinned" "$msvcrt"; do
-            echo "== $g"
-            "$g" --version | head -n 1
-            "$g" -x c -dM -E "$RUNNER_TEMP/p.c" | grep -E 'MSVCRT_VERSION|_UCRT' || true
-          done
-          cd "$RUNNER_TEMP"
-          cmake --version | head -n 1
-          cmake "-DPK5D_MODULE=$GITHUB_WORKSPACE/python/cmake/Pk5dToolchain.cmake" "-DPK5D_GCCS=$runner;$pinned;$msvcrt" \
-            -P "$GITHUB_WORKSPACE/.github/w03_trial/probe.cmake" || true
-          # the toolchain's programs: the DLLs they load (another MinGW-w64 earlier on PATH could serve them)
-          bin=$(dirname "$pinned")
-          lx="$bin/../libexec/gcc/x86_64-w64-mingw32/12.2.0"
-          for f in "$bin"/gcc.exe "$bin"/g++.exe "$bin"/as.exe "$bin"/ld.exe "$bin"/objdump.exe "$lx"/cc1.exe "$lx"/cc1plus.exe \
-                   "$lx"/collect2.exe "$lx"/lto-wrapper.exe "$bin"/../x86_64-w64-mingw32/bin/as.exe "$bin"/../x86_64-w64-mingw32/bin/ld.exe; do
-            [ -f "$f" ] || { echo "no $f"; continue; }
-            echo "== $f: $("$bin/objdump" -p "$f" | grep 'DLL Name' | tr -s ' ' | tr '\n' ' ')"
-          done
-          ls "$bin"/*.dll "$lx"/*.dll 2>/dev/null || true
-          powershell -NoProfile -Command "(Get-Item C:\Windows\System32\ucrtbase.dll).VersionInfo.FileVersion"
-
-  # W03 TRIAL ONLY: the detection fits' speed, three builds of this tree on one runner, alternating
-  w03-bench:
-    name: W03 trial, the fits' speed (windows-2025)
-    runs-on: windows-2025
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: MinGW-w64's GCC
-        run: |
-          bash tools/get_mingw.sh "$RUNNER_TEMP/mingw" | tee "$RUNNER_TEMP/mingw.txt"
-          tail -n 1 "$RUNNER_TEMP/mingw.txt" >> "$GITHUB_PATH"
-      - name: Three builds (MinGW-w64 with the UCRT's erf, erfc and log; MSVC; MinGW-w64 with libmingwex's)
-        run: |
-          T=$(cygpath -u "$RUNNER_TEMP")
-          build() {
-            python -m venv "$T/v_$1"
-            "$T/v_$1/Scripts/python" -m pip install -q --upgrade pip
-            PETAKIT5D_WINDOWS_TOOLCHAIN=$2 "$T/v_$1/Scripts/python" -m pip install -v . > "$T/pip_$1.log" 2>&1 || { tail -n 80 "$T/pip_$1.log"; return 1; }
-            grep 'petakit5d: the Windows toolchain' "$T/pip_$1.log"
-            "$T/v_$1/Scripts/python" -c "from petakit5d._ext import load; print(load('core').build_info()['compiler'])"
-          }
-          build ucrt mingw
-          build msvc msvc
-          # the base's calls: libmingwex's erf, erfc and log, at 64 bits
-          sed -i 's/pk5d_ad::\(erfc\|erf\|log\)(/std::\1(/g' cpp/detection/module.cpp
-          grep -n 'std::erf\|std::log' cpp/detection/module.cpp
-          ! grep -n 'pk5d_ad::' cpp/detection/module.cpp
-          build mingwex mingw
-      - name: The fits, alternating
-        run: |
-          W=$(cygpath -w "$RUNNER_TEMP")
-          export W03_W="$W"
-          python - <<'EOF'
-          import json, os
-          w = os.environ["W03_W"]
-          py = lambda v: os.path.join(w, "v_" + v, "Scripts", "python.exe")
-          script = os.path.join(os.environ["GITHUB_WORKSPACE"], ".github", "w03_trial", "bench_fits.py")
-          spec = {
-              "name": "w03_fits",
-              "repeats": 5,
-              "warmup": 1,
-              "variants": [
-                  {"id": v, "impl": "python", "python": py(v), "script": script,
-                   "args": ["--threads", "1", "4", "--repeats", "3"], "timeout": 1800}
-                  for v in ("ucrt", "mingwex", "msvc")
-              ],
-              "compare": [{"a": "ucrt", "b": "msvc"}, {"a": "ucrt", "b": "mingwex"}, {"a": "mingwex", "b": "msvc"}],
-          }
-          with open(os.path.join(w, "spec.json"), "w", newline="\n") as f:
-              json.dump(spec, f, indent=1)
-          EOF
-          "$(cygpath -u "$RUNNER_TEMP")/v_ucrt/Scripts/python" -m petakit5d.testing.bench run "$W\\spec.json" --out "$W\\bench"
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        with:
-          name: w03-bench
-          path: ${{ runner.temp }}/bench
-          if-no-files-found: warn

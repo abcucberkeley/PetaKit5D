@@ -35,6 +35,10 @@ if [ "$got" != "$sha" ]; then
 fi
 7z x -y -o"$dest" "$dest/mingw.7z" > /dev/null
 rm -f "$dest/mingw.7z"
+# the compiler's programs in libexec (cc1, cc1plus, collect2, lto-wrapper) load libwinpthread-1.dll,
+# which the archive has in bin/ alone: a copy next to them, so that the toolchain runs from its
+# folder off PATH, and not with another MinGW-w64's libwinpthread-1.dll that comes earlier on PATH
+cp "$dest/mingw64/bin/libwinpthread-1.dll" "$dest/mingw64/libexec/gcc/x86_64-w64-mingw32/12.2.0/"
 bin="$dest/mingw64/bin"
 if command -v cygpath > /dev/null; then
   bin=$(cygpath -m "$bin")

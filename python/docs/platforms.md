@@ -56,7 +56,10 @@ with the UCRT where it finds it, and MSVC otherwise:
 
 - **Where it looks:** the first `gcc` on `PATH`, and then the folder `tools/get_mingw.sh` unpacks
   the toolchain into when it is given none, `%LOCALAPPDATA%\petakit5d\mingw-12.2.0`
-  (`bash tools/get_mingw.sh` fetches it there; Git for Windows' bash has what it needs).
+  (`bash tools/get_mingw.sh` fetches it there; Git for Windows' bash has what it needs). The
+  toolchain runs from there off `PATH`: its compiler's own programs (cc1, cc1plus, collect2) load
+  `libwinpthread-1.dll`, which the archive has in `bin/` alone, so get_mingw.sh puts a copy next
+  to them (else they would take the first one on `PATH`, another MinGW-w64's, or fail).
 - **What it takes:** a `gcc` with `g++` next to it whose version and runtime are that toolchain's:
   the banner `(x86_64-posix-seh-rev2, Built by MinGW-W64 project) 12.2.0` and the UCRT as its C
   library (`__MSVCRT_VERSION__` 0xE00 in its headers; MinGW-builds' msvcrt builds of 12.2.0 have
@@ -272,13 +275,16 @@ b.npz` measure the difference.
 | macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | the same bits (before the filters' and the deskew kernels' NaN fix the 2 `specials.*_infinities` cases differed in NaN signs only); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
 | Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | the same bits (the CI, measured 2026-11-19: see "How Windows is tested"); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
 | Windows x86-64 (GitHub's windows-2025), MinGW-w64's GCC 12.2 and MSVC, Python 3.12 and 3.14 | 65 | the same bits with both toolchains (the CI of 2026-11-21: all 77 tests of test_kernel_hashes.py passed in each job) |
+| Windows x86-64 (GitHub's windows-2025, AMD EPYC), MinGW-w64's GCC 12.2 with the UCRT's `erf`, `erfc` and `log` in the Anderson-Darling statistics, and MSVC, Python 3.12 and 3.14 | 68 | the same bits with both toolchains; of the 9 recorded cases, 6 give Linux's bits with MinGW-w64 (5 with Python 3.14: `lsq.lsqlin`, NumPy's LAPACK), 2 with MSVC (1); the two Anderson-Darling cases give the same bits with both toolchains (measured 2026-11-21) |
 | Windows x86-64 with MinGW-w64's GCC 12.2 (a Windows 10 22H2 machine, Xeon Gold 6442Y, AVX-512), Python 3.12 (abi3 wheel) and 3.11 | 65 | the same bits; of the 9 recorded cases, 6 give Linux's bits too (the table below); measured 2026-11-21 | |
 | Windows x86-64 with MSVC, the same machine and wheel workflow run | 65 | the same bits but `detection.cr_exp` (Windows 10's `ldexp`, see "What differs by system"); of the 9 recorded cases, 2 |
 
 On that Windows 10 machine, all 74 cases of `tests/platform/_kernel_cases.py` (pinned and
 recorded) against Linux's (Rocky 8, glibc 2.28), with both toolchains' wheels of one commit: 71 give
 Linux's bits with MinGW-w64, 66 with MSVC. The others (ulp: a unit in the last place of the
-output's largest value; relative: of the value itself):
+output's largest value; relative: of the value itself; the Anderson-Darling rows' MinGW-w64
+column is from before its statistics took the UCRT's functions, 2026-11-21, since when they give
+MSVC's bits, as on the runners):
 
 | Case | MinGW-w64 | MSVC |
 |---|---|---|
@@ -286,8 +292,8 @@ output's largest value; relative: of the value itself):
 | `specials.fft_and_decon` | the same bits | two outputs: 2,246 and 2,382 NaNs of the other sign, and 2 values each by 1 or 2 units in their own last place |
 | `detection.cr_exp` (pinned) | the same bits | 183 of 6,350 values (subnormal), one unit low: Windows 10's `ldexp`, above |
 | `filters.edgetaper` | the double output: 13% of its values, 1 ulp | 32%, 1 ulp |
-| `detection.ad_stat` (the C library's `erfc` and `log`) | 3 of its 50 outputs, one value each, relative 2.1e-13 at most | 10 outputs, 17 values, 3.4e-13 |
-| `detection.fit_mex.ad` (`erf` and `log`) | 2 of its 8 outputs, 3 values, 5.9e-14 | 4 outputs, 42 values, 8.3e-13 |
+| `detection.ad_stat` (the C library's `erfc` and `log`) | libmingwex's: 3 of its 50 outputs, one value each, relative 2.1e-13 at most | 10 outputs, 17 values, 3.4e-13 |
+| `detection.fit_mex.ad` (`erf` and `log`) | libmingwex's: 2 of its 8 outputs, 3 values, 5.9e-14 | 4 outputs, 42 values, 8.3e-13 |
 
 edgetaper's differences with MinGW-w64 come from NumPy, whose `np.fft` and complex `np.abs` it
 calls (NumPy's Windows wheels are MSVC builds); its half spectra, the port's, give Linux's bits.
@@ -295,7 +301,9 @@ The MinGW-w64 build computes long double in 80 bits, as GCC does on Linux, so th
 twiddle factors start from Linux's angles (MSVC's long double is double, as on ARM), and
 MinGW-w64's x87 functions, run at 64 bits ([decisions/0011](decisions/0011-windows-toolchain.md)),
 agree with glibc's more often than the UCRT's (of 20,000 random arguments, exp: 18 differ from
-glibc's, the UCRT's 93; sin 45 and 485; cos 10 and 867; erfc 905 and 8,768).
+glibc's, the UCRT's 93; sin 45 and 485; cos 10 and 867; erfc 905 and 8,768). The Anderson-Darling
+statistics take the UCRT's `erf`, `erfc` and `log` all the same, for their speed (the user,
+2026-11-21; [decisions/0011](decisions/0011-windows-toolchain.md)).
 
 The cases whose digests are recorded, not pinned, and how much they differ (largest difference
 in ulps of the largest |value| of the output; FFT outputs in single precision included):
@@ -367,13 +375,17 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
 ## How Windows is tested
 
 - **On GitHub's runners only:** windows-2025, Python 3.12 and 3.14, the port built from source
-  with MSVC as `pip install` builds it (`.[test,figures,n5]`), and the whole CPU suite
-  (`pytest -v --timeout=900`), on every push. The job gates since 2026-11-14 (after two green
-  runs in a row). The same jobs with MinGW-w64's GCC (`tools/get_mingw.sh`; since 2026-11-21,
-  [decisions/0011](decisions/0011-windows-toolchain.md)) run the same suite, and 11 tests that
-  MSVC's skip: the instruction-set dispatch's (filters, resize, unmix), the NaN rules of the
-  filters' fused chains, and the one libgomp-1.dll with the I/O packages. No local Windows machine
-  runs the port's tests routinely.
+  as `pip install` builds it (`.[test,figures,n5]`), and the whole CPU suite
+  (`pytest -v --timeout=900`), on every push; the jobs gate since 2026-11-14 (after two green
+  runs in a row). Each Python has both of a source build's paths (above, "Windows: the toolchain
+  of a source build"; [decisions/0011](decisions/0011-windows-toolchain.md)): with MinGW-builds'
+  GCC 12.2.0, which `tools/get_mingw.sh` put in its folder with no MinGW-w64 on `PATH` (3.12) or
+  first on `PATH` (3.14), the build takes MinGW-w64; without it, the runners' own MinGW-w64 (GCC
+  15.2.0) is left out and the second attempt builds with MSVC. A step checks which toolchain each build took and why. The
+  MinGW-w64 jobs run 11 tests that MSVC's skip: the instruction-set dispatch's (filters, resize,
+  unmix), the NaN rules of the filters' fused chains, and the one libgomp-1.dll with the I/O
+  packages. The exact add-on's source build runs both paths too, in a job of its own. No local
+  Windows machine runs the port's tests routinely.
 - **Windows 10** (one run of the suite on a Windows 10 22H2 machine, 2026-11-19, with the
   libraries' 1.8.0 wheels): the results of the runners but for two differences of that machine,
   its C runtime's `ldexp` (above; with MSVC the detection fits' correctly rounded exp still
