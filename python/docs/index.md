@@ -51,7 +51,7 @@ microscopy, with MATLAB PetaKit5D's results and files.
 | [0008](decisions/0008-openmp-runtime.md) | one OpenMP runtime with cpp-zarr and cpp-tiff |
 | [0009](decisions/0009-n5-layout.md) | standard N5 |
 | [0010](decisions/0010-module-names.md) | a function's module names its MATLAB folder or kind (the renames before the first release) |
-| [0011](decisions/0011-windows-toolchain.md) | Windows: MinGW-w64's GCC beside MSVC (the one runtime with cpp-zarr and cpp-tiff, the x87 precision, the toolchain's libraries) |
+| [0011](decisions/0011-windows-toolchain.md) | Windows: MinGW-w64's GCC for the release wheels and source builds, MSVC as the fallback (the one runtime with cpp-zarr and cpp-tiff, the x87 precision, the toolchain's libraries) |
 
 ## Per-area differences
 
