@@ -2208,6 +2208,7 @@ EXEMPT_BINDINGS = {
     "flatfield.best_isa": "the CPU's instruction set",
     "io.simd": "build information",
     "mip.best_isa": "the CPU's instruction set",
+    "morph.median27_best_isa": "the CPU's instruction set",
     "resize.best_isa": "the CPU's instruction set",
     "unmix.best_isa": "the CPU's instruction set",
     "fft.backend_info": "build information",
