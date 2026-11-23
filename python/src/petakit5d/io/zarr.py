@@ -140,6 +140,16 @@ def _squeeze_z(a: np.ndarray) -> np.ndarray:
     return a[0] if a.ndim == 3 and a.shape[0] == 1 else a
 
 
+def _matlab_true(flag) -> bool:
+    """MATLAB's ``if flag``: true when the flag, or every element of an array of flags (as the
+    MATLAB-name layer gives writezarr's ``create``, declared ``logical`` of any size), is true,
+    and the array is not empty"""
+    if isinstance(flag, bool):
+        return flag
+    a = np.asarray(flag)
+    return bool(a.size) and bool(np.all(a))
+
+
 def _convert(data: np.ndarray, want: np.dtype) -> np.ndarray:
     """``data`` in the array's type, as MATLAB's mex converts (``cast``: integers rounded half
     away from zero and saturated, NaN to 0); cpp-zarr itself would use NumPy's ``astype`` (Z3)."""
@@ -695,7 +705,11 @@ def _region_write(path: str, data: np.ndarray, box, sparse_data: bool, uuid: boo
     Param("bbox", _NUMERIC, "Box (z0, y0, x0, z1, y1, x1) of the array to write.", convert="bbox"),
     Param("sparseData", "(1, :) logical", "Leave out chunks that are all zero."),
     Param("dimSeparator", "char", "Chunk key separator of a new array: '.' or '/'."),
-    Param("create", "logical", "Create a missing array (else an error)."),
+    Param(
+        "create",
+        "logical",
+        "Create a missing array (else an error); flags of an array as MATLAB's if: all true.",
+    ),
     Param("uuid", _LOGICAL, "Write chunks to temporary names, then rename them."),
     Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
     task="IO2",
@@ -752,7 +766,7 @@ def write_zarr(
         bbox = (0, 0, 0, *sz)
     new_file = False
     if not os.path.isdir(path):
-        if not create:
+        if not _matlab_true(create):
             raise FileNotFoundError(f"The zarr file {path} does not exist!")
         from petakit5d.core.arrays import matlab_class
 
