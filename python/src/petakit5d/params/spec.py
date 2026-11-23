@@ -42,6 +42,8 @@ __all__ = [
     "RegistryError",
     "MatlabArgumentError",
     "MatlabCheckError",
+    "MatlabValidationError",
+    "ConversionRefusedError",
     "snake_name",
 ]
 
@@ -74,6 +76,21 @@ class MatlabCheckError(MatlabArgumentError):
     """A value refused by an error that the check raises itself, which MATLAB's inputParser
     passes on with the check's identifier (empty for an error without one): the port's checks
     of third-party code give it where MATLAB's check raises one (the word ``raises(...)``)."""
+
+
+class MatlabValidationError(MatlabArgumentError, ValueError):
+    """A value refused by an arguments-block declaration as MATLAB refuses it (its class, size or
+    validation functions; ``params.declarations``), with MATLAB's identifier and message
+    (``MATLAB:validation:IncompatibleSize``, ``MATLAB:validation:UnableToConvert``,
+    ``MATLAB:validators:mustBeFinite``, ...). A ValueError too, as the readers' own refusal of a
+    box or range that is not finite is."""
+
+
+class ConversionRefusedError(MatlabArgumentError):
+    """A value the port refuses where MATLAB's arguments block would convert it in a way that
+    only hides mistakes (numbers, a cell or a function handle taken as text, characters as
+    logical values; ``params.declarations``); ``identifier`` is the port's
+    ``PETAKIT5D:params:conversionRefused``."""
 
 
 # ----------------------------------------------------------------------------------------------
@@ -670,7 +687,7 @@ class _Record:
         shown = ", ".join(
             f"{f}={getattr(self, f)!r}"
             for f in self._fields
-            if f not in ("alternatives", "condition")
+            if f not in ("alternatives", "condition", "declaration")
         )
         return f"{type(self).__name__}({shown})"
 
@@ -749,7 +766,9 @@ class ParamSpec(_Record):
     (validator_alternatives), or those of the port's own check (accepts_alternatives); conv:
     the conversion kind (``kinds.Kind``) or None; accepts: the port's own check (third-party
     code), or None; condition: the validator read whole where it has terms beyond class
-    predicates (``params.conditions.read``: its check replaces the alternatives'), or None.
+    predicates (``params.conditions.read``: its check replaces the alternatives'), or None;
+    declaration: an arguments-block declaration read whole (``params.declarations.read``: the
+    MATLAB-name layer and the command line convert and check values by it), or None.
     """
 
     __slots__ = _SPEC_FIELDS = (
@@ -767,9 +786,16 @@ class ParamSpec(_Record):
         "conv",
         "accepts",
         "condition",
+        "declaration",
     )
     _fields = _SPEC_FIELDS
-    _defaults = {"alternatives": None, "conv": None, "accepts": None, "condition": None}
+    _defaults = {
+        "alternatives": None,
+        "conv": None,
+        "accepts": None,
+        "condition": None,
+        "declaration": None,
+    }
     matlab: str
     py: str
     kind: str
@@ -784,12 +810,24 @@ class ParamSpec(_Record):
     conv: Any
     accepts: str | None
     condition: Any
+    declaration: Any
 
     __hash__ = None  # type: ignore[assignment]
 
     @property
     def required(self) -> bool:
         return self.kind == "required"
+
+    def take(self, value: Any, fname: str, position: int | None = None) -> Any:
+        """A MATLAB value of this parameter as the function gets it, before its conversion
+        kind: checked by its validator; for an arguments-block declaration converted and
+        checked as MATLAB's arguments block does (``params.declarations``: a column made a row,
+        numbers made logical values, MATLAB's errors; the conversions that hide mistakes
+        refused). ``position``: a positional argument's place, which MATLAB's messages name."""
+        if self.declaration is not None:
+            return self.declaration.apply(value, self.matlab, position)
+        self.check(value, fname)
+        return value
 
     def outcome(self, value: Any) -> tuple[bool, str | None]:
         """(taken, identifier): whether the check takes ``value``; the identifier of MATLAB's
@@ -885,6 +923,16 @@ def _condition(validator: str | None) -> Any:
     if not validator or not re.match(r"\s*@\s*\(", validator):
         return None
     from petakit5d.params.conditions import read
+
+    return read(validator)
+
+
+def _declaration(validator: str | None) -> Any:
+    """an arguments-block declaration read whole (params.declarations); inputParser's
+    validators (texts of functions, @...) are none"""
+    if not validator or validator.lstrip().startswith("@"):
+        return None
+    from petakit5d.params.declarations import read
 
     return read(validator)
 
@@ -1022,10 +1070,11 @@ class FunctionSpec:
             if key in seen:
                 raise RegistryError(f"{where}: {d.matlab!r} is declared twice")
             seen.add(key)
-            cond = None
+            cond = decl = None
             if d.accepts is None:
                 alts = validator_alternatives(d.validator)
                 cond = _condition(d.validator)
+                decl = _declaration(d.validator)
                 mcc = d.mcc or mcc_mode(d.validator)
             elif d.validator:
                 raise RegistryError(
@@ -1051,6 +1100,7 @@ class FunctionSpec:
                     conv=_kind_of(d, where),
                     accepts=d.accepts,
                     condition=cond,
+                    declaration=decl,
                 )
             )
         return out
@@ -1160,6 +1210,8 @@ class FunctionSpec:
     ) -> dict[str, Any]:
         """Bind a MATLAB-style call: required, then optional positionals, then name-value
         pairs or structs, then keyword arguments (MATLAB names, any case, unique prefixes).
+        Values are checked by their validators, and those of an arguments-block declaration
+        converted and checked as MATLAB's arguments block does (``ParamSpec.take``).
         Returns {python name: normalized value} of what was given; later values win."""
         given = self._bind(list(args), dict(kwargs or {}))
         return self._from_matlab({k: normalize(a) for k, a in given.items()})
@@ -1194,6 +1246,8 @@ class FunctionSpec:
                 "MATLAB:badsubscript",
             )
         raw = {p.py: s for p, s in zip(positional, argv, strict=False)}
+        # (the places of the values given by position, which MATLAB's messages name)
+        place = {p.py: i + 1 for i, p in enumerate(positional[: len(argv)])}
         rest = argv[len(positional) :]
         for i in range(0, len(rest), 2):
             q = self._resolve_matlab_name(rest[i])
@@ -1205,13 +1259,11 @@ class FunctionSpec:
                 )
             if q is not None:
                 raw[q.py] = rest[i + 1]
+                place.pop(q.py, None)
         given = {}
         by_py = {p.py: p for p in self.params}
         for k, s in raw.items():
-            p = by_py[k]
-            val = convert_string(p, s)
-            p.check(val, self.matlab_name)
-            given[k] = val
+            given[k] = by_py[k].take(convert_string(by_py[k], s), self.matlab_name, place.get(k))
         return self._from_matlab({k: normalize(a) for k, a in given.items()})
 
     def _bind(self, args: list[Any], kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -1223,13 +1275,11 @@ class FunctionSpec:
             raise MatlabArgumentError("Not enough input arguments.", "MATLAB:minrhs")
         given: dict[str, Any] = {}
 
-        def put(p: ParamSpec, val: Any) -> None:
-            val = text_paths(val)
-            p.check(val, self.matlab_name)
-            given[p.py] = val
+        def put(p: ParamSpec, val: Any, position: int | None = None) -> None:
+            given[p.py] = p.take(text_paths(val), self.matlab_name, position)
 
-        for p, a in zip(required, args, strict=False):
-            put(p, a)
+        for i, (p, a) in enumerate(zip(required, args, strict=False)):
+            put(p, a, i + 1)
         rest = args[len(required) :]
         name_value = any(q.kind == "parameter" and not q.python_only for q in params)
         for p in optional:
@@ -1271,7 +1321,10 @@ class FunctionSpec:
                 ):
                     break
                 p.check(a, self.matlab_name)
-            given[p.py] = a
+            # (no registered optional argument has an arguments-block declaration; one would be
+            # converted as MATLAB's arguments block does)
+            at = len(args) - len(rest) + 1
+            given[p.py] = a if p.declaration is None else p.take(a, self.matlab_name, at)
             rest = rest[1:]
         i = 0
         while i < len(rest):

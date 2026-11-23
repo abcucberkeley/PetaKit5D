@@ -1578,7 +1578,7 @@ Write a volume ``(z, y, x)`` or an image ``(y, x)`` as a native zarr array (MATL
 | `bbox` | `bbox` | par | bbox | `[]` | `None` | `(1, :) {mustBeNumeric}` | Box (z0, y0, x0, z1, y1, x1) of the array to write. |
 | `sparseData` | `sparse_data` | par |  | `false` | `False` | `(1, :) logical` | Leave out chunks that are all zero. |
 | `dimSeparator` | `dim_separator` | par |  | `'.'` | `'.'` | `char` | Chunk key separator of a new array: '.' or '/'. |
-| `create` | `create` | par |  | `true` | `True` | `logical` | Create a missing array (else an error). |
+| `create` | `create` | par |  | `true` | `True` | `logical` | Create a missing array (else an error); flags of an array as MATLAB's if: all true. |
 | `uuid` | `uuid` | par |  | `true` | `True` | `(1, 1) logical` | Write chunks to temporary names, then rename them. |
 | `numThreads` | `num_threads` | par |  | `[]` | `None` |  | Threads (None: the CPUs available). (Python only) |
 
