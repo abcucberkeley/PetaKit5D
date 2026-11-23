@@ -448,7 +448,11 @@ def test_registered_readtiff_and_writetiff(tmp_path):
         read_tiff(fn, (2, 5))
     with pytest.raises(MatlabArgumentError) as e:
         matlab.writetiff(to_matlab(vol), str(fn), "Compression", 7)
-    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    # (MATLAB's arguments block makes a number a character; the port refuses it)
+    assert e.value.identifier == "PETAKIT5D:params:conversionRefused"
+    with pytest.raises(MatlabArgumentError) as e:
+        matlab.writetiff(to_matlab(vol), str(fn), "Compression", "LZW")
+    assert e.value.identifier == "MATLAB:validators:mustBeMember"
     with pytest.raises(MatlabArgumentError) as e:
         matlab.readtiff(str(fn), "rang", [1, 2], "level", 1)
     assert e.value.identifier == "MATLAB:InputParser:UnmatchedParameter"

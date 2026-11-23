@@ -23,9 +23,11 @@ from petakit5d.params.registry import (
     spec_of,
 )
 from petakit5d.params.spec import (
+    ConversionRefusedError,
     FunctionSpec,
     MatlabArgumentError,
     MatlabCheckError,
+    MatlabValidationError,
     Param,
     ParamSpec,
     RegistryError,
@@ -36,12 +38,14 @@ from petakit5d.params.values import Cell, MArray, MString, from_python, to_pytho
 __all__ = [
     "REGISTRY",
     "Cell",
+    "ConversionRefusedError",
     "FunctionSpec",
     "LiteralError",
     "MArray",
     "MString",
     "MatlabArgumentError",
     "MatlabCheckError",
+    "MatlabValidationError",
     "NotPorted",
     "Param",
     "ParamSpec",

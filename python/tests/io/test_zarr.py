@@ -904,7 +904,7 @@ def test_registered_createzarr_writezarr_and_readzarr(tmp_path):
         create_zarr(tmp_path / "x.zarr", order="A")
     with pytest.raises(MatlabArgumentError) as e:
         matlab.readzarr(str(tmp_path / "F.zarr"), "inputBbox", "all")
-    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    assert e.value.identifier == "MATLAB:validators:mustBeNumeric"
     with pytest.raises(TypeError, match="block_sizes"):
         write_zarr(vol, tmp_path / "w.zarr", block_sizes=(4, 8, 8))
 

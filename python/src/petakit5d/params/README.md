@@ -125,10 +125,18 @@ Rules:
   `size(x, 2) == 5`, `any(strcmpi(x, {'cubic', 'linear'}))`, `ismember(lower(x), {...})`,
   `x > 0 && round(x) == x`) is read whole and evaluated as MATLAB evaluates it, with MATLAB's
   errors where a term raises one (`params/conditions.py`, measured in
-  `tests/params/test_conditions.py`). An arguments-block declaration is checked by the
-  classes its class and its `mustBeNumeric`, `mustBeNumericOrLogical`, `mustBeText` and
-  `mustBeTextScalar` take; its sizes, its other validation functions (`mustBeFinite`,
-  `mustBeMember`) and MATLAB's conversions to its class and size are not.
+  `tests/params/test_conditions.py`). An arguments-block declaration (the io wrappers':
+  `(1, :) {mustBeNumeric, mustBeFinite}`, `(1, 1) logical`, `char`, ...) is read whole
+  (`params/declarations.py`, measured in `tests/params/test_declarations.py`): the MATLAB-name
+  layer and the command line convert a value to its class and size and validate it as MATLAB's
+  arguments block does, and give the function the converted value (a column made a row,
+  numbers made logical values), with MATLAB's errors and messages (`MatlabValidationError`).
+  MATLAB's conversions that only hide mistakes (numbers, a cell of text or a function handle
+  taken as text, characters taken as logical values) are refused with the port's
+  `ConversionRefusedError` (`PETAKIT5D:params:conversionRefused`; decided by the user on
+  2026-11-22, `docs/parity/io.md`). The snake_case API checks a declaration by the classes its
+  class and its `mustBeNumeric`, `mustBeNumericOrLogical`, `mustBeText` and `mustBeTextScalar`
+  take, as before: its values are the port's forms (a range's open end None).
   Defaults are not checked when they are None (MATLAB's `[]`: inputParser validates no
   default, as in `ip.addOptional('info', [], @isstruct)`); they are compared with MATLAB's.
 - **Positional text**: in the MATLAB-name layer an optional argument without a validator
