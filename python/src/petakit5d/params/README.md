@@ -133,7 +133,7 @@ Rules:
   numbers made logical values), with MATLAB's errors and messages (`MatlabValidationError`).
   MATLAB's conversions that only hide mistakes (numbers, a cell of text or a function handle
   taken as text, characters taken as logical values) are refused with the port's
-  `ConversionRefusedError` (`PETAKIT5D:params:conversionRefused`; decided by the user on
+  `ConversionRefusedError` (`petakit5d:params:conversionRefused`; decided by the user on
   2026-11-22, `docs/parity/io.md`). The snake_case API checks a declaration by the classes its
   class and its `mustBeNumeric`, `mustBeNumericOrLogical`, `mustBeText` and `mustBeTextScalar`
   take, as before: its values are the port's forms (a range's open end None).

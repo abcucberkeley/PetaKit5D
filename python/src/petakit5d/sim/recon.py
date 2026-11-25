@@ -67,7 +67,8 @@ _PI = math.pi
 
 
 class SimError(RuntimeError):
-    """An error MATLAB raises here; ``identifier`` is its error id (empty for ``error(msg)``)."""
+    """An error MATLAB raises here; ``identifier`` is its error id (empty for ``error(msg)``; the
+    port's own ``petakit5d:sim:naAboveIndex`` for a numerical aperture above the index)."""
 
     def __init__(self, message: str, identifier: str = ""):
         super().__init__(message)
@@ -328,7 +329,7 @@ def _asin(x: float) -> float:
     if not -1.0 <= x <= 1.0:
         raise SimError(
             "The numerical aperture must not exceed the immersion medium's refractive index.",
-            "PetaKit5D:sim:naAboveIndex",
+            "petakit5d:sim:naAboveIndex",
         )
     return math.asin(x)
 

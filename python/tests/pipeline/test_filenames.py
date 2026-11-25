@@ -191,7 +191,7 @@ REGEXP_CORPUS = [
     (r"ch0_.*Iter_000[0-4]", "ch0_x_Iter_0003"),
 ]
 # the forms MATLAB has and the translation refuses (variable-length lookbehind, dynamic
-# expressions): the port fails with 'pk5d:regexp' instead of guessing
+# expressions): the port fails with 'petakit5d:pipeline:unsupportedRegexp' instead of guessing
 UNSUPPORTED = [r"(?<=a.?)b", r"(??a)", r"a(?@disp(1))"]
 
 # channel patterns: as the tests, demos and wrappers use them, and patterns that are invalid
@@ -685,7 +685,7 @@ def test_matlab_regex_rules(pattern, text, match):
         ("a[b", "MATLAB:REGEXP:ErrorUnmatchedBracket"),
         ("a{2", "MATLAB:REGEXP:ErrorUnmatchedCurly"),
     ]
-    + [(p, "pk5d:regexp") for p in UNSUPPORTED],
+    + [(p, "petakit5d:pipeline:unsupportedRegexp") for p in UNSUPPORTED],
 )
 def test_matlab_regex_errors(pattern, identifier):
     with pytest.raises(MatlabError) as e:

@@ -543,7 +543,7 @@ def test_too_few_voxels_raises_where_matlab_aborts():
     w[1, 1, 1] = 5.0
     with pytest.raises(ValueError) as e:
         fit.fitgaussian3d(w, [1, 1, 1, 1, 1, 1, 0], "Ac")
-    assert e.value.identifier == "pk5d:fitGaussian3D:tooFewPoints"
+    assert e.value.identifier == "petakit5d:detection:tooFewPoints"
 
 
 def test_batched_fits_do_not_depend_on_the_thread_count():

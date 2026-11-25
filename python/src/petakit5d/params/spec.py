@@ -90,7 +90,7 @@ class ConversionRefusedError(MatlabArgumentError):
     """A value the port refuses where MATLAB's arguments block would convert it in a way that
     only hides mistakes (numbers, a cell or a function handle taken as text, characters as
     logical values; ``params.declarations``); ``identifier`` is the port's
-    ``PETAKIT5D:params:conversionRefused``."""
+    ``petakit5d:params:conversionRefused``."""
 
 
 # ----------------------------------------------------------------------------------------------
@@ -1226,7 +1226,7 @@ class FunctionSpec:
             except (ValueError, TypeError) as err:
                 raise MatlabArgumentError(
                     f"The value of '{p.matlab}' is not a valid {p.conv.doc or p.conv.name}: {err}",
-                    "PETAKIT5D:params:badValue",
+                    "petakit5d:params:badValue",
                 ) from None
         return out
 
@@ -1426,7 +1426,7 @@ def convert_string(p: ParamSpec, s: str) -> Any:
             if s[0] == "@":
                 raise MatlabArgumentError(
                     f"function handles in strings are not supported ({p.matlab}: {s!r})",
-                    "PETAKIT5D:params:functionHandleString",
+                    "petakit5d:params:functionHandleString",
                 )
             return matlab_eval(s)
         return s
