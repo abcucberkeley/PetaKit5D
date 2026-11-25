@@ -449,7 +449,7 @@ def test_registered_readtiff_and_writetiff(tmp_path):
     with pytest.raises(MatlabArgumentError) as e:
         matlab.writetiff(to_matlab(vol), str(fn), "Compression", 7)
     # (MATLAB's arguments block makes a number a character; the port refuses it)
-    assert e.value.identifier == "PETAKIT5D:params:conversionRefused"
+    assert e.value.identifier == "petakit5d:params:conversionRefused"
     with pytest.raises(MatlabArgumentError) as e:
         matlab.writetiff(to_matlab(vol), str(fn), "Compression", "LZW")
     assert e.value.identifier == "MATLAB:validators:mustBeMember"

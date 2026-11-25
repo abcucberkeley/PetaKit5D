@@ -221,7 +221,7 @@ def fit_gaussian3d_mex(
     ``x`` along the last axis). Track processing calls mode ``'Ac'`` (amplitude and background at
     fixed positions), the PSF sigma estimate ``'xyzAsrc'``. MATLAB aborts when a window has
     fewer valid voxels than free parameters; this raises ``ValueError`` (identifier
-    ``pk5d:fitGaussian3D:tooFewPoints``)."""
+    ``petakit5d:detection:tooFewPoints``)."""
     free = mex_free(mode)
     if free.size == 0:
         raise ValueError("fitGaussian3D: the mode names no parameter")
@@ -234,7 +234,7 @@ def fit_gaussian3d_mex(
         err = ValueError(
             "fitGaussian3D: a window has fewer valid voxels than free parameters (MATLAB aborts)"
         )
-        err.identifier = "pk5d:fitGaussian3D:tooFewPoints"
+        err.identifier = "petakit5d:detection:tooFewPoints"
         raise err
     nf = free.size
     out_prm = np.empty((k, 7))

@@ -708,7 +708,7 @@ def test_unwritable_task_folder_fails_the_submission(tmp_path, fake_slurm):
         with pytest.warns(SingleJobWarning) as rec:
             out = call_wrapper(tmp_path, -1, 7, job_log_dir=str(logs), task_runner=False)
         assert out == (-1, -1, 0)
-        assert rec[0].message.identifier == "generic_single_job_submit_wrapper:taskFile"
+        assert rec[0].message.identifier == "petakit5d:jobs:taskFileNotWritten"
         assert fake_slurm.call_count("sbatch") == 0
         out = call_wrapper(tmp_path, -1, 7, job_log_dir=str(logs), tmp_dir=str(tmp_path / "tasks"))
         assert out[2] == 1

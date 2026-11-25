@@ -27,7 +27,7 @@ a row, numbers made logical values), and raise MATLAB's errors with its identifi
 
 Some of MATLAB's class conversions only hide mistakes. The port refuses them instead, with an
 error of its own (``spec.ConversionRefusedError``, identifier
-``PETAKIT5D:params:conversionRefused``; decided by the user on 2026-11-22, docs/parity/io.md):
+``petakit5d:params:conversionRefused``; decided by the user on 2026-11-22, docs/parity/io.md):
 
 - for ``char``: numbers (MATLAB takes the characters of their codes: ``writetiff(img, 65)``
   writes a file named ``A``, ``[]`` is ``''``), a cell of char arrays (MATLAB makes its texts a
@@ -55,7 +55,7 @@ from petakit5d.params import values as _v
 
 __all__ = ["REFUSED_ID", "Declaration", "Value", "read", "value"]
 
-REFUSED_ID = "PETAKIT5D:params:conversionRefused"
+REFUSED_ID = "petakit5d:params:conversionRefused"
 _SIZE_ID = "MATLAB:validation:IncompatibleSize"
 _CONVERT_ID = "MATLAB:validation:UnableToConvert"
 _VALIDATORS = ("mustBeNumeric", "mustBeNumericOrLogical", "mustBeFinite", "mustBeMember")

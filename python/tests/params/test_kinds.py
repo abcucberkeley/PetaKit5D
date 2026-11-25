@@ -279,8 +279,21 @@ def test_bad_values_in_the_matlab_layer():
     spec = _registry()
     with pytest.raises(MatlabArgumentError) as e:
         spec.call_matlab(np.zeros((2, 2, 2)), [1, 2, 3])
-    assert e.value.identifier == "PETAKIT5D:params:badValue"
+    assert e.value.identifier == "petakit5d:params:badValue"
     assert "inputBbox" in str(e.value)
+
+
+def test_function_handles_in_command_line_strings_are_refused():
+    reg = Registry()
+
+    @reg.register("XR_handle_fake", Param("fn", "@(x) isempty(x) || isa(x, 'function_handle')"))
+    def handle_fake(fn):
+        return fn
+
+    spec = reg.find("XR_handle_fake")
+    with pytest.raises(MatlabArgumentError) as e:
+        spec.bind_strings(["@sin"])
+    assert e.value.identifier == "petakit5d:params:functionHandleString"
 
 
 def test_function_level_hooks():

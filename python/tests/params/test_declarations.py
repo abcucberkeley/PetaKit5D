@@ -4,7 +4,7 @@
 inputs in arguments blocks (11 declarations: ``DECLS``). MATLAB converts a value to the declared
 class and size before the function runs, then validates it. The MATLAB-name layer does the same
 (``params.declarations``), and refuses the conversions that only hide mistakes, with the port's
-error (``PETAKIT5D:params:conversionRefused``; decided by the user on 2026-11-22).
+error (``petakit5d:params:conversionRefused``; decided by the user on 2026-11-22).
 
 MATLAB R2024b decides: each oracle case calls a fake function with one declaration
 (``matlab_decl/pkpy_decl_<key>.m``: the lab's text and default, the argument positional or
@@ -842,7 +842,7 @@ def test_the_refusals_messages():
     ]:
         with pytest.raises(ConversionRefusedError) as err:
             p.take(x, "writetiff", 2)
-        assert err.value.identifier == "PETAKIT5D:params:conversionRefused"
+        assert err.value.identifier == "petakit5d:params:conversionRefused"
         assert str(err.value).startswith("The argument at position 2 ('filepath') must be text")
         assert what in str(err.value) and "docs/parity/io.md" in str(err.value)
     p = REGISTRY.find("writetiff").param("groupWrite")

@@ -64,7 +64,8 @@ __all__ = [
 
 
 class MatlabError(Exception):
-    """An error where MATLAB raises one; ``identifier`` is MATLAB's error identifier."""
+    """An error where MATLAB raises one; ``identifier`` is MATLAB's error identifier (the port's
+    ``petakit5d:pipeline:unsupportedRegexp`` for an expression it does not translate)."""
 
     def __init__(self, message: str, identifier: str = "") -> None:
         super().__init__(message)
@@ -272,7 +273,8 @@ def _translate_once(p: str, strict: bool, literal: frozenset[int]) -> tuple[str,
                         continue
                 if p.startswith(("(??", "(?@"), i):
                     raise MatlabError(
-                        "MATLAB's dynamic expressions are not supported", "pk5d:regexp"
+                        "MATLAB's dynamic expressions are not supported",
+                        "petakit5d:pipeline:unsupportedRegexp",
                     )
                 for opener in ("(?:", "(?=", "(?!", "(?<=", "(?<!", "(?>", "(?("):
                     if p.startswith(opener, i):
@@ -363,7 +365,9 @@ def matlab_regex(pattern: str, ignore_case: bool = False, strict: bool = False) 
     try:
         return re.compile(_translate(pattern, strict), flags)
     except re.error as err:
-        raise MatlabError(f"invalid regular expression {pattern!r}: {err}", "pk5d:regexp") from err
+        raise MatlabError(
+            f"invalid regular expression {pattern!r}: {err}", "petakit5d:pipeline:unsupportedRegexp"
+        ) from err
 
 
 def contains_text(texts: Sequence[str], pattern: str, ignore_case: bool = False) -> list[bool]:
