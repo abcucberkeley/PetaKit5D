@@ -4,7 +4,7 @@ The port reads and writes MATLAB's files (tiff and zarr through cpp-tiff and cpp
 format choices are rows F1, F2 and F8 of the [index](index.md) (decision record
 [0004](../decisions/0004-io-bindings.md)). This page holds the io functions' rows beyond those.
 
-## The arguments blocks of readtiff, writetiff, readzarr, writezarr and createzarr (A1; proposed 2026-11-22, for the user)
+## The arguments blocks of readtiff, writetiff, readzarr, writezarr and createzarr (A1; approved by the user 2026-11-25)
 
 The five wrappers declare their inputs in `arguments` blocks (`range (1, :) {mustBeNumeric,
 mustBeFinite}`, `groupWrite (1, 1) logical`, `filepath char`, ...: 11 declarations of 36
