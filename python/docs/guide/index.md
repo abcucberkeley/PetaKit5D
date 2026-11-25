@@ -90,3 +90,16 @@ computes them itself ([platforms.md](../platforms.md)).
 Some functions take two parameters MATLAB doesn't have (marked Python-only in `pk5d doc`):
 `num_threads`, the threads of the call, and `out`, an array to reuse for the result where a
 function is called frame after frame.
+
+## Errors and warnings
+
+Where MATLAB raises an error or gives a warning, the port raises a Python exception or gives a
+Python warning whose `identifier` attribute is MATLAB's identifier, unchanged: MathWorks'
+(`MATLAB:InputParser:UnmatchedParameter`, `images:imresize3:badScaleOrSize`) and those of
+PetaKit5D's MATLAB code (`crop:inputError`, `PetaKit5D:mexFallback`), so code that checks them
+carries over. The port's own errors and warnings, where MATLAB has none or the port refuses what
+MATLAB takes, have identifiers in one style, `petakit5d:<area>:<name>`: the area is the package
+or module that raises it, in lowercase, and the name is lowerCamelCase
+(`petakit5d:params:conversionRefused`, `petakit5d:detection:amiraNotWritten`). `pk5d-master`
+prints an error's identifier on its last line, as the compiled MATLAB master does
+([cli.md](../cli.md)).

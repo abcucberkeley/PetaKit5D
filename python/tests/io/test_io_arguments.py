@@ -388,7 +388,7 @@ def test_matlab_refused(case, tmp_path):
             call(_volume(), work.as_posix() + "/")
     finally:
         os.chdir(cwd)
-    assert err.value.identifier == "PETAKIT5D:params:conversionRefused"
+    assert err.value.identifier == "petakit5d:params:conversionRefused"
     assert not os.listdir(work)
 
 

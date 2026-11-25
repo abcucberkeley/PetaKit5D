@@ -965,7 +965,7 @@ def _add_plain(parent: str, line: Mapping[str, Any]) -> tuple[TaskFolder, int] |
         warnings.warn(
             SingleJobWarning(
                 f"The task of a single job can't be written to {parent}: {err}",
-                "generic_single_job_submit_wrapper:taskFile",
+                "petakit5d:jobs:taskFileNotWritten",
             ),
             stacklevel=3,
         )
